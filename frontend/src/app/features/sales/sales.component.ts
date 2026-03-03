@@ -60,8 +60,8 @@ import { ApiService, Sale, Product, Client, PaginatedResponse, SaleItem } from '
               <tr *ngFor="let sale of sales()">
                 <td>{{ sale.invoice_number }}</td>
                 <td>{{ sale.client?.name || 'Client inconnu' }}</td>
-                <td>{{ sale.total | number:'1.2-2' }} €</td>
-                <td>{{ sale.tax_amount | number:'1.2-2' }} €</td>
+                <td>{{ sale.total | number:'1.2-2' }} CFA</td>
+                <td>{{ sale.tax_amount | number:'1.2-2' }} CFA</td>
                 <td>
                   <span class="badge" [class.badge-success]="sale.status === 'paid'" [class.badge-warning]="sale.status === 'partial'" [class.badge-danger]="sale.status === 'unpaid'">
                     {{ getStatusLabel(sale.status) }}
@@ -108,7 +108,7 @@ import { ApiService, Sale, Product, Client, PaginatedResponse, SaleItem } from '
                 <div class="product-selector">
                   <select class="form-control" [(ngModel)]="selectedProductId">
                     <option value="">Sélectionner un produit</option>
-                    <option *ngFor="let product of products()" [value]="product.id">{{ product.name }} ({{ product.selling_price }}€)</option>
+                    <option *ngFor="let product of products()" [value]="product.id">{{ product.name }} ({{ product.selling_price }}CFA)</option>
                   </select>
                   <input type="number" class="form-control" [(ngModel)]="selectedQuantity" placeholder="Quantité" min="1">
                   <button class="btn btn-primary" (click)="addProduct()"><i class="fas fa-plus"></i></button>
@@ -127,9 +127,9 @@ import { ApiService, Sale, Product, Client, PaginatedResponse, SaleItem } from '
                   <tbody>
                     <tr *ngFor="let item of saleForm.items; let i = index">
                       <td>{{ item.product_name }}</td>
-                      <td>{{ item.unit_price | number:'1.2-2' }} €</td>
+                      <td>{{ item.unit_price | number:'1.2-2' }} CFA</td>
                       <td>{{ item.quantity }}</td>
-                      <td>{{ item.subtotal | number:'1.2-2' }} €</td>
+                      <td>{{ item.subtotal | number:'1.2-2' }} CFA</td>
                       <td><button class="btn-icon text-danger" (click)="removeProduct(i)"><i class="fas fa-times"></i></button></td>
                     </tr>
                   </tbody>
@@ -137,9 +137,9 @@ import { ApiService, Sale, Product, Client, PaginatedResponse, SaleItem } from '
               </div>
               
               <div class="totals-section">
-                <div class="total-row"><span>Sous-total:</span><span>{{ calculateSubtotal() | number:'1.2-2' }} €</span></div>
-                <div class="total-row"><span>TVA (18%):</span><span>{{ calculateTax() | number:'1.2-2' }} €</span></div>
-                <div class="total-row total-final"><span>Total:</span><span>{{ calculateTotal() | number:'1.2-2' }} €</span></div>
+                <div class="total-row"><span>Sous-total:</span><span>{{ calculateSubtotal() | number:'1.2-2' }} CFA</span></div>
+                <div class="total-row"><span>TVA (18%):</span><span>{{ calculateTax() | number:'1.2-2' }} CFA</span></div>
+                <div class="total-row total-final"><span>Total:</span><span>{{ calculateTotal() | number:'1.2-2' }} CFA</span></div>
               </div>
             </div>
           </div>
@@ -160,27 +160,37 @@ import { ApiService, Sale, Product, Client, PaginatedResponse, SaleItem } from '
           <div class="drawer-body" *ngIf="selectedSale()">
             <div class="sale-details">
               <div class="detail-row"><span>N° Facture:</span><span>{{ selectedSale()?.invoice_number }}</span></div>
-              <div class="detail-row"><span>Client:</span><span>{{ selectedSale()?.client?.name }}</span></div>
+              <div class="detail-row"><span>Client:</span><span>{{ selectedSale()?.client?.name || 'Client inconnu' }}</span></div>
               <div class="detail-row"><span>Date:</span><span>{{ selectedSale()?.created_at | date:'dd/MM/yyyy HH:mm' }}</span></div>
-              <div class="detail-row"><span>Statut:</span>
-                <span class="badge" [class.badge-success]="selectedSale()?.status === 'paid'" [class.badge-warning]="selectedSale()?.status === 'partial'" [class.badge-danger]="selectedSale()?.status === 'unpaid'">
-                  {{ getStatusLabel(selectedSale()?.status || '') }}
-                </span>
+              <div class="detail-row">
+                <span>Statut:</span>
+                <div class="status-edit">
+                  <select class="form-control status-select" [(ngModel)]="selectedSale()!.status" (change)="updateStatus()">
+                    <option value="paid">Payé</option>
+                    <option value="unpaid">Impayé</option>
+                    <option value="partial">Partiel</option>
+                  </select>
+                </div>
               </div>
             </div>
             
             <h4>Articles</h4>
             <table class="table">
-              <thead><tr><th>Produit</th><th>Prix</th><th>Qtés></th><th>Total</th></tr></thead>
+              <thead><tr><th>Produit</th><th>Prix</th><th>Qté</th><th>Total</th></tr></thead>
               <tbody>
-                <tr *ngFor="let item of selectedSale()?.items"><td>{{ item.product_name }}</td><td>{{ item.unit_price }}€</td><td>{{ item.quantity }}</td><td>{{ item.subtotal }}€</td></tr>
+                <tr *ngFor="let item of selectedSale()?.items">
+                  <td>{{ item.product_name }}</td>
+                  <td>{{ item.unit_price | number:'1.2-2' }} CFA</td>
+                  <td>{{ item.quantity }}</td>
+                  <td>{{ item.subtotal | number:'1.2-2' }} CFA</td>
+                </tr>
               </tbody>
             </table>
             
             <div class="totals-section">
-              <div class="total-row"><span>Sous-total:</span><span>{{ selectedSale()?.subtotal }} €</span></div>
-              <div class="total-row"><span>TVA:</span><span>{{ selectedSale()?.tax_amount }} €</span></div>
-              <div class="total-row total-final"><span>Total:</span><span>{{ selectedSale()?.total }} €</span></div>
+              <div class="total-row"><span>Sous-total:</span><span>{{ selectedSale()?.subtotal | number:'1.2-2' }} CFA</span></div>
+              <div class="total-row"><span>TVA:</span><span>{{ selectedSale()?.tax_amount | number:'1.2-2' }} CFA</span></div>
+              <div class="total-row total-final"><span>Total:</span><span>{{ selectedSale()?.total | number:'1.2-2' }} CFA</span></div>
             </div>
           </div>
         </div>
@@ -211,7 +221,9 @@ import { ApiService, Sale, Product, Client, PaginatedResponse, SaleItem } from '
     .drawer-header { padding: 1.5rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
     .drawer-body { padding: 1.5rem; }
     .sale-details { margin-bottom: 1.5rem; }
-    .detail-row { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--border-color); }
+    .detail-row { display: flex; justify-content: space-between; padding: 0.75rem 0; border-bottom: 1px solid var(--border-color); align-items: center; }
+    .status-edit { display: flex; gap: 0.5rem; }
+    .status-select { padding: 0.375rem 0.75rem; font-size: 0.875rem; min-width: 120px; }
     @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
   `]
 })
@@ -284,7 +296,30 @@ export class SalesComponent implements OnInit {
     }
   }
 
-  viewSale(sale: Sale): void { this.selectedSale.set(sale); this.showDrawer.set(true); }
+  viewSale(sale: Sale): void { 
+    // Load sale details with items from API
+    this.api.getSale(sale.id).subscribe({
+      next: (saleDetails) => {
+        this.selectedSale.set(saleDetails);
+        this.showDrawer.set(true);
+      }
+    });
+  }
+  
+  updateStatus(): void {
+    const sale = this.selectedSale();
+    if (!sale) return;
+    
+    this.api.updateSaleStatus(sale.id, sale.status).subscribe({
+      next: () => {
+        this.loadSales();
+      },
+      error: (err) => {
+        alert('Erreur lors de la mise à jour du statut');
+      }
+    });
+  }
+
   closeDrawer(): void { this.showDrawer.set(false); this.selectedSale.set(null); }
 
   confirmDelete(sale: Sale): void {

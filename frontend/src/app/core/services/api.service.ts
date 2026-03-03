@@ -260,6 +260,10 @@ export class ApiService {
     return this.http.put<Sale>(`${this.apiUrl}/sales/${id}`, data);
   }
 
+  updateSaleStatus(id: number, status: string): Observable<Sale> {
+    return this.http.put<Sale>(`${this.apiUrl}/sales/${id}`, { status });
+  }
+
   deleteSale(id: number): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/sales/${id}`);
   }

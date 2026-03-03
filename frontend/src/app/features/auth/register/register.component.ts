@@ -12,13 +12,18 @@ import { AuthService, RegisterRequest } from '../../../core/services/auth.servic
     <div class="register-container">
       <div class="register-card">
         <div class="register-header">
+          <div class="logo-container">
+            <i class="fas fa-tools"></i>
+          </div>
           <h1>Gestion Quincaillerie</h1>
           <p>Créez votre compte</p>
         </div>
         
         <form (ngSubmit)="onSubmit()" class="register-form">
           <div class="form-group">
-            <label class="form-label">Nom complet</label>
+            <label class="form-label">
+              <i class="fas fa-user"></i> Nom complet
+            </label>
             <input 
               type="text" 
               class="form-control" 
@@ -30,7 +35,9 @@ import { AuthService, RegisterRequest } from '../../../core/services/auth.servic
           </div>
           
           <div class="form-group">
-            <label class="form-label">Email</label>
+            <label class="form-label">
+              <i class="fas fa-envelope"></i> Email
+            </label>
             <input 
               type="email" 
               class="form-control" 
@@ -42,7 +49,9 @@ import { AuthService, RegisterRequest } from '../../../core/services/auth.servic
           </div>
           
           <div class="form-group">
-            <label class="form-label">Mot de passe</label>
+            <label class="form-label">
+              <i class="fas fa-lock"></i> Mot de passe
+            </label>
             <input 
               type="password" 
               class="form-control" 
@@ -54,7 +63,9 @@ import { AuthService, RegisterRequest } from '../../../core/services/auth.servic
           </div>
           
           <div class="form-group">
-            <label class="form-label">Confirmer le mot de passe</label>
+            <label class="form-label">
+              <i class="fas fa-lock"></i> Confirmer le mot de passe
+            </label>
             <input 
               type="password" 
               class="form-control" 
@@ -66,16 +77,20 @@ import { AuthService, RegisterRequest } from '../../../core/services/auth.servic
           </div>
           
           <button type="submit" class="btn btn-primary register-btn" [disabled]="loading()">
-            <span *ngIf="!loading()">Créer un compte</span>
-            <span *ngIf="loading()">Création en cours...</span>
+            <span *ngIf="!loading()">
+              <i class="fas fa-user-plus"></i> Créer un compte
+            </span>
+            <span *ngIf="loading()">
+              <i class="fas fa-spinner fa-spin"></i> Création en cours...
+            </span>
           </button>
           
           <div *ngIf="error()" class="error-message">
-            {{ error() }}
+            <i class="fas fa-exclamation-circle"></i> {{ error() }}
           </div>
           
           <div *ngIf="success()" class="success-message">
-            {{ success() }}
+            <i class="fas fa-check-circle"></i> {{ success() }}
           </div>
         </form>
         
@@ -91,29 +106,65 @@ import { AuthService, RegisterRequest } from '../../../core/services/auth.servic
       display: flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 50%, #1e3a5f 100%);
       padding: 1rem;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .register-container::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: 
+        radial-gradient(circle at 20% 80%, rgba(45, 90, 135, 0.4) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(30, 58, 95, 0.4) 0%, transparent 50%);
+      pointer-events: none;
     }
     
     .register-card {
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      background: rgba(255, 255, 255, 0.98);
+      border-radius: 20px;
+      box-shadow: 
+        0 25px 50px -12px rgba(0, 0, 0, 0.4),
+        0 0 0 1px rgba(255, 255, 255, 0.1);
       width: 100%;
-      max-width: 420px;
-      padding: 2.5rem;
+      max-width: 500px;
+      padding: 1.5rem;
       animation: fadeIn 0.5s ease-out;
+      position: relative;
+      z-index: 1;
     }
     
     .register-header {
       text-align: center;
-      margin-bottom: 2rem;
+      margin-bottom: 1rem;
+    }
+    
+    .logo-container {
+      width: 60px;
+      height: 60px;
+      background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1rem;
+      box-shadow: 0 8px 20px rgba(30, 58, 95, 0.3);
+    }
+    
+    .logo-container i {
+      font-size: 2rem;
+      color: white;
     }
     
     .register-header h1 {
-      font-size: 1.75rem;
+      font-size: 1.5rem;
       font-weight: 700;
-      color: #1e293b;
+      color: #1e3a5f;
       margin-bottom: 0.5rem;
     }
     
@@ -128,42 +179,107 @@ import { AuthService, RegisterRequest } from '../../../core/services/auth.servic
       gap: 1.25rem;
     }
     
+    .form-group label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #374151;
+      margin-bottom: 0.5rem;
+    }
+    
+    .form-group label i {
+      color: #1e3a5f;
+    }
+    
+    .form-control {
+      padding: 0.875rem 1rem;
+      border: 2px solid #e5e7eb;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      transition: all 0.3s ease;
+      background: #f9fafb;
+    }
+    
+    .form-control:focus {
+      outline: none;
+      border-color: #1e3a5f;
+      background: white;
+      box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.1);
+    }
+    
+    .form-control::placeholder {
+      color: #9ca3af;
+    }
+    
     .register-btn {
       width: 100%;
-      padding: 0.875rem;
+      padding: 1rem;
       font-size: 1rem;
+      font-weight: 600;
       margin-top: 0.5rem;
+      background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+      border: none;
+      border-radius: 10px;
+      color: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    
+    .register-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(30, 58, 95, 0.4);
+    }
+    
+    .register-btn:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
     }
     
     .error-message {
-      background: #fee2e2;
-      color: #991b1b;
-      padding: 0.75rem;
-      border-radius: 8px;
+      background: #fef2f2;
+      color: #dc2626;
+      padding: 0.875rem;
+      border-radius: 10px;
       font-size: 0.875rem;
       text-align: center;
+      border: 1px solid #fecaca;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
     }
     
     .success-message {
       background: #d1fae5;
       color: #065f46;
-      padding: 0.75rem;
-      border-radius: 8px;
+      padding: 0.875rem;
+      border-radius: 10px;
       font-size: 0.875rem;
       text-align: center;
+      border: 1px solid #a7f3d0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
     }
     
     .register-footer {
       margin-top: 1.5rem;
       text-align: center;
       font-size: 0.875rem;
-      color: #64748b;
+      color: #6b7280;
     }
     
     .register-footer a {
-      color: #3b82f6;
+      color: #1e3a5f;
       text-decoration: none;
-      font-weight: 500;
+      font-weight: 600;
     }
     
     .register-footer a:hover {

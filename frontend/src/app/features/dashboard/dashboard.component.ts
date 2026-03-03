@@ -23,7 +23,7 @@ Chart.register(...registerables);
             <i class="fas fa-shopping-cart"></i>
           </div>
           <div class="stats-content">
-            <div class="stats-value">{{ stats()?.today_sales | number:'1.2-2' }} €</div>
+            <div class="stats-value">{{ stats()?.today_sales | number:'1.0-0' }} CFA</div>
             <div class="stats-label">Ventes du jour</div>
             <div class="stats-change" [class.positive]="(stats()?.sales_growth || 0) > 0" [class.negative]="(stats()?.sales_growth || 0) < 0">
               <i class="fas" [class.fa-arrow-up]="(stats()?.sales_growth || 0) > 0" [class.fa-arrow-down]="(stats()?.sales_growth || 0) < 0"></i>
@@ -37,7 +37,7 @@ Chart.register(...registerables);
             <i class="fas fa-truck"></i>
           </div>
           <div class="stats-content">
-            <div class="stats-value">{{ stats()?.monthly_purchases | number:'1.2-2' }} €</div>
+            <div class="stats-value">{{ stats()?.monthly_purchases | number:'1.0-0' }} CFA</div>
             <div class="stats-label">Achats du mois</div>
             <div class="stats-change" [class.positive]="(stats()?.purchases_growth || 0) > 0" [class.negative]="(stats()?.purchases_growth || 0) < 0">
               <i class="fas" [class.fa-arrow-up]="(stats()?.purchases_growth || 0) > 0" [class.fa-arrow-down]="(stats()?.purchases_growth || 0) < 0"></i>
@@ -51,7 +51,7 @@ Chart.register(...registerables);
             <i class="fas fa-warehouse"></i>
           </div>
           <div class="stats-content">
-            <div class="stats-value">{{ stats()?.stock_value | number:'1.2-2' }} €</div>
+            <div class="stats-value">{{ stats()?.stock_value | number:'1.0-0' }} CFA</div>
             <div class="stats-label">Valeur du stock</div>
           </div>
         </div>
@@ -126,7 +126,7 @@ Chart.register(...registerables);
               <tr *ngFor="let sale of recentSales()">
                 <td>{{ sale.invoice_number }}</td>
                 <td>{{ sale.client_name }}</td>
-                <td>{{ sale.total | number:'1.2-2' }} €</td>
+                <td>{{ sale.total | number:'1.2-2' }} CFA</td>
                 <td>
                   <span class="badge" [class.badge-success]="sale.status === 'paid'" [class.badge-warning]="sale.status === 'partial'" [class.badge-danger]="sale.status === 'unpaid'">
                     {{ getStatusLabel(sale.status) }}

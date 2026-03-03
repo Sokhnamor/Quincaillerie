@@ -19,18 +19,47 @@ class DashboardController extends Controller
     public function stats(): JsonResponse
     {
         $today = now()->startOfDay();
+        $yesterday = now()->subDay()->startOfDay();
         $startOfMonth = now()->startOfMonth();
         $endOfMonth = now()->endOfMonth();
+        $startOfLastMonth = now()->subMonth()->startOfMonth();
+        $endOfLastMonth = now()->subMonth()->endOfMonth();
 
         // Ventes du jour
         $todaySales = Sale::whereDate('created_at', $today)
             ->where('status', 'paid')
             ->sum('total');
 
+        // Ventes d'hier
+        $yesterdaySales = Sale::whereDate('created_at', $yesterday)
+            ->where('status', 'paid')
+            ->sum('total');
+
+        // Croissance des ventes
+        $salesGrowth = 0;
+        if ($yesterdaySales > 0) {
+            $salesGrowth = round((($todaySales - $yesterdaySales) / $yesterdaySales) * 100, 1);
+        } elseif ($todaySales > 0) {
+            $salesGrowth = 100;
+        }
+
         // Achats du mois
         $monthPurchases = Purchase::whereBetween('created_at', [$startOfMonth, $endOfMonth])
             ->where('status', 'completed')
             ->sum('total');
+
+        // Achats du mois dernier
+        $lastMonthPurchases = Purchase::whereBetween('created_at', [$startOfLastMonth, $endOfLastMonth])
+            ->where('status', 'completed')
+            ->sum('total');
+
+        // Croissance des achats
+        $purchasesGrowth = 0;
+        if ($lastMonthPurchases > 0) {
+            $purchasesGrowth = round((($monthPurchases - $lastMonthPurchases) / $lastMonthPurchases) * 100, 1);
+        } elseif ($monthPurchases > 0) {
+            $purchasesGrowth = 100;
+        }
 
         // Valeur du stock
         $stockValue = Product::selectRaw('SUM(stock * selling_price) as total')
@@ -50,6 +79,8 @@ class DashboardController extends Controller
             'stock_value' => $stockValue,
             'low_stock_count' => $lowStockProducts,
             'out_of_stock_count' => $outOfStockProducts,
+            'sales_growth' => $salesGrowth,
+            'purchases_growth' => $purchasesGrowth,
         ]);
     }
 

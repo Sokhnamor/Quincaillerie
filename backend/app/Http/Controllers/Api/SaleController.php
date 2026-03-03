@@ -17,7 +17,7 @@ class SaleController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Sale::with(['client', 'user']);
+        $query = Sale::with(['client', 'user', 'items']);
 
         // Search by invoice number or client name
         if ($request->has('search') && $request->search) {
@@ -30,9 +30,10 @@ class SaleController extends Controller
             });
         }
 
-        // Filter by status
-        if ($request->has('status') && $request->status) {
-            $query->where('status', $request->status);
+        // Filter by status - accept both filter name formats
+        $status = $request->status ?? $request->filter;
+        if ($status) {
+            $query->where('status', $status);
         }
 
         // Filter by date range

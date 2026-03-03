@@ -61,8 +61,8 @@ import { ApiService, Product, Category, PaginatedResponse } from '../../core/ser
                 <td>{{ product.name }}</td>
                 <td>{{ product.category?.name }}</td>
                 <td>{{ product.supplier?.name }}</td>
-                <td>{{ product.purchase_price | number:'1.2-2' }} €</td>
-                <td>{{ product.selling_price | number:'1.2-2' }} €</td>
+                <td>{{ product.purchase_price | number:'1.2-2' }} CFA</td>
+                <td>{{ product.selling_price | number:'1.2-2' }} CFA</td>
                 <td>{{ product.stock }}</td>
                 <td>
                   <span class="badge" [class.badge-success]="product.stock > product.alert_threshold" [class.badge-warning]="product.stock <= product.alert_threshold && product.stock > 0" [class.badge-danger]="product.stock === 0">
