@@ -207,7 +207,7 @@ import { ApiService, Sale, Product, Client, PaginatedResponse, SaleItem } from '
     .export-buttons { display: flex; gap: 0.5rem; }
     .action-buttons { display: flex; gap: 0.5rem; }
     .text-danger { color: #ef4444; }
-    .modal-large { max-width: 700px; }
+    .modal-large { max-width: 700px; max-height: 90vh; overflow-y: auto; }
     .sale-form { display: flex; flex-direction: column; gap: 1.5rem; }
     .form-section h4 { margin-bottom: 1rem; color: var(--text-primary); }
     .product-selector { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
@@ -282,22 +282,44 @@ export class SalesComponent implements OnInit {
 
   removeProduct(index: number): void { this.saleForm.items.splice(index, 1); }
   calculateSubtotal(): number { return this.saleForm.items.reduce((sum: number, item: any) => sum + item.subtotal, 0); }
-  calculateTax(): number { return this.calculateSubtotal() * 0.2; }
+  calculateTax(): number { return this.calculateSubtotal() * 0.19; }
   calculateTotal(): number { return this.calculateSubtotal() + this.calculateTax(); }
 
   closeModal(): void { this.showModal.set(false); this.editingSale.set(null); }
 
   saveSale(): void {
-    const data = { client_id: this.saleForm.client_id, subtotal: this.calculateSubtotal(), tax_amount: this.calculateTax(), total: this.calculateTotal(), items: this.saleForm.items };
+    if (!this.saleForm.client_id) {
+      alert('Veuillez sélectionner un client');
+      return;
+    }
+    if (this.saleForm.items.length === 0) {
+      alert('Veuillez ajouter au moins un produit');
+      return;
+    }
+
+    const data = {
+      client_id: parseInt(this.saleForm.client_id),
+      items: this.saleForm.items.map((item: any) => ({
+        product_id: parseInt(item.product_id),
+        quantity: parseInt(item.quantity),
+        unit_price: parseFloat(item.unit_price)
+      }))
+    };
+    
     if (this.editingSale()) {
-      this.api.updateSale(this.editingSale()!.id, data).subscribe({ next: () => { this.loadSales(); this.closeModal(); } });
+      this.api.updateSale(this.editingSale()!.id, data).subscribe({ 
+        next: () => { this.loadSales(); this.closeModal(); },
+        error: (err) => { alert(err.error?.message || 'Erreur lors de la mise à jour'); }
+      });
     } else {
-      this.api.createSale(data).subscribe({ next: () => { this.loadSales(); this.closeModal(); } });
+      this.api.createSale(data).subscribe({ 
+        next: () => { this.loadSales(); this.closeModal(); },
+        error: (err) => { alert(err.error?.message || 'Erreur lors de la création'); }
+      });
     }
   }
 
   viewSale(sale: Sale): void { 
-    // Load sale details with items from API
     this.api.getSale(sale.id).subscribe({
       next: (saleDetails) => {
         this.selectedSale.set(saleDetails);
@@ -311,12 +333,8 @@ export class SalesComponent implements OnInit {
     if (!sale) return;
     
     this.api.updateSaleStatus(sale.id, sale.status).subscribe({
-      next: () => {
-        this.loadSales();
-      },
-      error: (err) => {
-        alert('Erreur lors de la mise à jour du statut');
-      }
+      next: () => { this.loadSales(); },
+      error: () => { alert('Erreur lors de la mise à jour du statut'); }
     });
   }
 

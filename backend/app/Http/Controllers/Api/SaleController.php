@@ -154,8 +154,15 @@ class SaleController extends Controller
      */
     public function show(Sale $sale): JsonResponse
     {
+        $sale = $sale->load(['client', 'user', 'items.product']);
+        
+        // Add product_name to each item for frontend compatibility
+        $sale->items->each(function ($item) {
+            $item->product_name = $item->product ? $item->product->name : 'Produit supprimé';
+        });
+
         return response()->json([
-            'sale' => $sale->load(['client', 'user', 'items.product'])
+            'sale' => $sale
         ]);
     }
 

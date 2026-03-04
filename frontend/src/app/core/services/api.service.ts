@@ -249,19 +249,27 @@ export class ApiService {
   }
 
   getSale(id: number): Observable<Sale> {
-    return this.http.get<Sale>(`${this.apiUrl}/sales/${id}`);
+    return this.http.get<{sale: Sale}>(`${this.apiUrl}/sales/${id}`).pipe(
+      map(response => response.sale)
+    );
   }
 
   createSale(data: any): Observable<Sale> {
-    return this.http.post<Sale>(`${this.apiUrl}/sales`, data);
+    return this.http.post<{sale: Sale}>(`${this.apiUrl}/sales`, data).pipe(
+      map(response => response.sale)
+    );
   }
 
   updateSale(id: number, data: any): Observable<Sale> {
-    return this.http.put<Sale>(`${this.apiUrl}/sales/${id}`, data);
+    return this.http.put<{sale: Sale}>(`${this.apiUrl}/sales/${id}`, data).pipe(
+      map(response => response.sale)
+    );
   }
 
   updateSaleStatus(id: number, status: string): Observable<Sale> {
-    return this.http.put<Sale>(`${this.apiUrl}/sales/${id}`, { status });
+    return this.http.put<{sale: Sale}>(`${this.apiUrl}/sales/${id}`, { status }).pipe(
+      map(response => response.sale)
+    );
   }
 
   deleteSale(id: number): Observable<void> {
