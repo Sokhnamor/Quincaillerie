@@ -60,8 +60,8 @@ Chart.register(...registerables);
               <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path>
             </svg>
           </div>
-          <div class="stats-content">
-            <span class="stats-label">Achats du mois</span>
+<div class="stats-content">
+            <span class="stats-label">Ventes du mois</span>
             <span class="stats-value">{{ animatedPurchases() | number:'1.0-0' }} CFA</span>
             <div class="stats-change" [class.positive]="(stats()?.purchases_growth || 0) > 0" [class.negative]="(stats()?.purchases_growth || 0) < 0" *ngIf="stats()?.purchases_growth">
               <svg *ngIf="(stats()?.purchases_growth || 0) > 0" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -498,8 +498,8 @@ export class DashboardComponent implements OnInit, AfterViewInit, OnDestroy {
     const duration = 1000;
     let step = 0;
     const steps = 60;
-    const salesTarget = data.today_sales || 0;
-    const purchasesTarget = data.monthly_purchases || 0;
+const salesTarget = data.today_sales || 0;
+    const purchasesTarget = data.month_sales || 0;
     const stockTarget = data.stock_value || 0;
     
     const animate = () => {

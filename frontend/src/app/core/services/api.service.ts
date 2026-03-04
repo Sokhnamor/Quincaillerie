@@ -4,9 +4,11 @@ import { Observable, map } from 'rxjs';
 
 export interface DashboardStats {
   today_sales: number;
-  monthly_purchases: number;
+  month_sales: number;
+  month_purchases: number;
   stock_value: number;
   low_stock_count: number;
+  out_of_stock_count?: number;
   sales_growth: number;
   purchases_growth: number;
 }
