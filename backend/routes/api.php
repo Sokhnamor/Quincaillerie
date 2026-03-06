@@ -62,6 +62,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/sales/{sale}', [SaleController::class, 'show']);
     Route::put('/sales/{sale}', [SaleController::class, 'update']);
     Route::delete('/sales/{sale}', [SaleController::class, 'destroy']);
+    Route::get('/sales/{sale}/pdf', [SaleController::class, 'generatePdf']);
 
     // Purchases
     Route::get('/purchases', [PurchaseController::class, 'index']);

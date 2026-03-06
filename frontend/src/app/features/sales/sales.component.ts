@@ -155,7 +155,7 @@ import { ApiService, Sale, Product, Client, PaginatedResponse, SaleItem } from '
         <div class="drawer" (click)="$event.stopPropagation()">
           <div class="drawer-header">
             <h3>Détails de la vente</h3>
-            <button class="btn-icon" (click)="closeDrawer()"><i class="fas fa-times"></i></button>
+            <button class="btn btn-primary" (click)="downloadInvoice()"><i class="fas fa-file-pdf"></i> PDF</button>
           </div>
           <div class="drawer-body" *ngIf="selectedSale()">
             <div class="sale-details">
@@ -348,4 +348,24 @@ export class SalesComponent implements OnInit {
 
   exportPdf(): void { this.api.exportSalesPdf().subscribe({ next: (blob) => { const url = window.URL.createObjectURL(blob); window.open(url); } }); }
   exportExcel(): void { this.api.exportSalesExcel().subscribe({ next: (blob) => { const url = window.URL.createObjectURL(blob); window.open(url); } }); }
+
+  downloadInvoice(): void {
+    const sale = this.selectedSale();
+    if (!sale) return;
+    
+    this.api.downloadInvoicePdf(sale.id).subscribe({
+      next: (blob) => {
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `facture-${sale.invoice_number}.pdf`;
+        link.click();
+        window.URL.revokeObjectURL(url);
+      },
+      error: (err) => {
+        alert('Erreur lors du téléchargement du PDF');
+        console.error(err);
+      }
+    });
+  }
 }

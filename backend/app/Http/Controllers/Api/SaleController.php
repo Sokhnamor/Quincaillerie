@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -228,5 +229,33 @@ class SaleController extends Controller
                 'message' => 'Erreur lors de la suppression: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Generate PDF invoice for a sale
+     */
+    public function generatePdf(Sale $sale): \Illuminate\Http\Response
+    {
+        $sale = $sale->load(['client', 'user', 'items.product']);
+        
+        // Add product_name to each item
+        $sale->items->each(function ($item) {
+            $item->product_name = $item->product ? $item->product->name : 'Produit supprimé';
+        });
+
+        $companyName = config('app.name', 'Mon Entreprise');
+        
+        $pdf = Pdf::loadView('invoices.sale', [
+            'sale' => $sale,
+            'company' => [
+                'name' => $companyName,
+                'address' => 'Cotonou, Benin',
+                'phone' => '+229 00 00 00 00',
+                'email' => 'contact@entreprise.com',
+                'tax_id' => 'N° Contribuable: 0000000000'
+            ]
+        ]);
+
+        return $pdf->download('facture-' . $sale->invoice_number . '.pdf');
     }
 }

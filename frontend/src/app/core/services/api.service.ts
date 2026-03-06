@@ -285,4 +285,8 @@ export class ApiService {
   exportSalesExcel(): Observable<Blob> {
     return this.http.get(`${this.apiUrl}/sales/export/excel`, { responseType: 'blob' });
   }
+
+  downloadInvoicePdf(saleId: number): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/sales/${saleId}/pdf`, { responseType: 'blob' });
+  }
 }
