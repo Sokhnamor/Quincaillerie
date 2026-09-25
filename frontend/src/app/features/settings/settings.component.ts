@@ -1,14 +1,15 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
 import { NotifyService } from '../../core/services/notify.service';
-import { Settings } from '../../core/models';
-import { INVOICE_FORMATS } from '../../shared/labels';
+import { Backup, Settings } from '../../core/models';
+import { INVOICE_FORMATS, downloadBlob } from '../../shared/labels';
 
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, DatePipe, DecimalPipe],
   template: `
     <div class="page" style="max-width:980px">
       <div class="page-header">
@@ -66,6 +67,33 @@ import { INVOICE_FORMATS } from '../../shared/labels';
             </div>
           </div>
 
+          <div class="card">
+            <div class="card-header">
+              <div><div class="card-title">Sauvegardes de la base de données</div><div class="card-subtitle">Automatique chaque soir à 21 h · les 30 dernières sont conservées</div></div>
+              <button type="button" class="btn btn-secondary btn-sm" (click)="backupNow()" [disabled]="backingUp()">
+                @if (backingUp()) { <span class="spinner"></span> } @else { <i class="fa-solid fa-database"></i> } Sauvegarder maintenant
+              </button>
+            </div>
+            @if (backups().length === 0) {
+              <div class="empty empty-sm"><div class="empty-icon"><i class="fa-solid fa-database"></i></div><p class="muted small">Aucune sauvegarde pour l'instant.</p></div>
+            } @else {
+              <div class="table-wrap">
+                <table class="table table-compact">
+                  <tbody>
+                    @for (b of backups().slice(0, 8); track b.name) {
+                      <tr>
+                        <td><div class="mono small">{{ b.name }}</div><div class="cell-sub">{{ b.created_at | date: 'EEEE d MMMM y à HH:mm' }}</div></td>
+                        <td class="text-right muted small num">{{ b.size / 1024 | number: '1.0-0' }} Ko</td>
+                        <td class="text-right"><button type="button" class="icon-btn" (click)="download(b)" title="Télécharger" aria-label="Télécharger"><i class="fa-solid fa-download"></i></button></td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+            <div class="card-footer xs subtle">Pour restaurer : phpMyAdmin → base « quincaillerie » → Importer → choisir le fichier .sql.</div>
+          </div>
+
           <div class="row" style="justify-content:flex-end">
             <button type="button" class="btn btn-secondary" (click)="load()">Annuler les modifications</button>
             <button type="submit" class="btn btn-primary" [disabled]="saving()">@if (saving()) { <span class="spinner"></span> } @else { <i class="fa-solid fa-check"></i> } Enregistrer</button>
@@ -87,6 +115,8 @@ export class SettingsComponent implements OnInit {
   formats = INVOICE_FORMATS;
   form = signal<Settings | null>(null);
   saving = signal(false);
+  backups = signal<Backup[]>([]);
+  backingUp = signal(false);
 
   ngOnInit(): void {
     this.load();
@@ -94,6 +124,29 @@ export class SettingsComponent implements OnInit {
 
   load(): void {
     this.api.getSettings().subscribe({ next: s => this.form.set({ ...s }), error: err => this.notify.error(err) });
+    this.api.getBackups().subscribe({ next: b => this.backups.set(b) });
+  }
+
+  backupNow(): void {
+    this.backingUp.set(true);
+    this.api.createBackup().subscribe({
+      next: res => {
+        this.backingUp.set(false);
+        this.notify.success(res.message);
+        this.api.getBackups().subscribe({ next: b => this.backups.set(b) });
+      },
+      error: err => {
+        this.backingUp.set(false);
+        this.notify.error(err);
+      },
+    });
+  }
+
+  download(backup: Backup): void {
+    this.api.downloadBackup(backup.name).subscribe({
+      next: blob => downloadBlob(blob, backup.name),
+      error: err => this.notify.error(err, 'Téléchargement impossible'),
+    });
   }
 
   save(): void {

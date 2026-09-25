@@ -1,11 +1,15 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BackupController;
+use App\Http\Controllers\Api\CashClosingController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\PurchaseController;
+use App\Http\Controllers\Api\QuoteController;
+use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\StockMovementController;
@@ -17,7 +21,7 @@ use Illuminate\Support\Facades\Route;
 | Roles
 |  - admin        : everything, including users and settings
 |  - gestionnaire : catalogue, stock, purchases, sale cancellation, exports
-|  - caissier     : point of sale, sales, payments, clients
+|  - caissier     : point of sale, sales, payments, returns, quotes, clients, cash closing
 */
 
 // Public: login only (5 attempts per minute per IP)
@@ -63,6 +67,22 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/sales/{sale}', [SaleController::class, 'update'])->whereNumber('sale');
     Route::post('/sales/{sale}/payments', [SaleController::class, 'addPayment'])->whereNumber('sale');
     Route::get('/sales/{sale}/pdf', [SaleController::class, 'generatePdf'])->whereNumber('sale');
+    Route::post('/sales/{sale}/returns', [SaleController::class, 'storeReturn'])->whereNumber('sale');
+    Route::get('/sales/{sale}/returns/{saleReturn}/pdf', [SaleController::class, 'returnPdf'])->whereNumber('sale');
+
+    // Quotes / pro forma
+    Route::get('/quotes', [QuoteController::class, 'index']);
+    Route::post('/quotes', [QuoteController::class, 'store']);
+    Route::get('/quotes/{quote}', [QuoteController::class, 'show']);
+    Route::put('/quotes/{quote}', [QuoteController::class, 'update']);
+    Route::delete('/quotes/{quote}', [QuoteController::class, 'destroy']);
+    Route::post('/quotes/{quote}/convert', [QuoteController::class, 'convert']);
+    Route::get('/quotes/{quote}/pdf', [QuoteController::class, 'pdf']);
+
+    // Cash register closing
+    Route::get('/cash-closings/summary', [CashClosingController::class, 'summary']);
+    Route::get('/cash-closings', [CashClosingController::class, 'index']);
+    Route::post('/cash-closings', [CashClosingController::class, 'store']);
 
     // Management: admin + gestionnaire
     Route::middleware('role:admin,gestionnaire')->group(function () {
@@ -90,6 +110,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/sales/{sale}', [SaleController::class, 'destroy'])->whereNumber('sale');
         Route::get('/sales/export/excel', [SaleController::class, 'exportExcel']);
         Route::get('/sales/export/pdf', [SaleController::class, 'exportPdf']);
+
+        Route::get('/reports/summary', [ReportController::class, 'summary']);
+        Route::get('/reports/export', [ReportController::class, 'export']);
     });
 
     // Administration: admin only
@@ -103,5 +126,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/users/{user}', [UserController::class, 'destroy']);
 
         Route::put('/settings', [SettingController::class, 'update']);
+
+        Route::delete('/sales/{sale}/payments/{payment}', [SaleController::class, 'deletePayment'])->whereNumber('sale');
+
+        Route::get('/backups', [BackupController::class, 'index']);
+        Route::post('/backups', [BackupController::class, 'store']);
+        Route::get('/backups/{name}', [BackupController::class, 'download']);
     });
 });

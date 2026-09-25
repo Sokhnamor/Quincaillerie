@@ -10,6 +10,8 @@ use Illuminate\Http\Request;
 class ClientController extends Controller
 {
     private const RULES = [
+        'type' => 'nullable|in:particulier,professionnel',
+        'credit_limit' => 'nullable|numeric|min:0',
         'phone' => 'nullable|string|max:30',
         'email' => 'nullable|email|max:255',
         'address' => 'nullable|string|max:500',
@@ -23,6 +25,7 @@ class ClientController extends Controller
     {
         $query = Client::withCount('sales')
             ->withSum('sales', 'total')
+            ->withSum('sales', 'returned_amount')
             ->withSum('sales', 'paid_amount');
 
         if ($search = $request->search) {
@@ -41,7 +44,8 @@ class ClientController extends Controller
         $clients = $query->orderBy('name')->paginate(min((int) ($request->per_page ?? 15), 100));
 
         $clients->getCollection()->transform(function ($client) {
-            $client->balance_due = max(0, (float) $client->sales_sum_total - (float) $client->sales_sum_paid_amount);
+            $client->sales_sum_total = (float) $client->sales_sum_total - (float) $client->sales_sum_returned_amount;
+            $client->balance_due = max(0, $client->sales_sum_total - (float) $client->sales_sum_paid_amount);
             return $client;
         });
 
@@ -69,9 +73,9 @@ class ClientController extends Controller
     public function show(Client $client): JsonResponse
     {
         $sales = $client->sales()->latest()->limit(20)
-            ->get(['id', 'invoice_number', 'total', 'paid_amount', 'status', 'created_at']);
+            ->get(['id', 'invoice_number', 'total', 'returned_amount', 'paid_amount', 'status', 'created_at']);
 
-        $totals = $client->sales()->selectRaw('COUNT(*) as count, COALESCE(SUM(total),0) as total, COALESCE(SUM(paid_amount),0) as paid')->first();
+        $totals = $client->sales()->selectRaw('COUNT(*) as count, COALESCE(SUM(total - returned_amount),0) as total, COALESCE(SUM(paid_amount),0) as paid')->first();
 
         return response()->json([
             'client' => $client,
@@ -80,6 +84,7 @@ class ClientController extends Controller
                 'sales_count' => (int) $totals->count,
                 'total_spent' => (float) $totals->total,
                 'balance_due' => max(0, (float) $totals->total - (float) $totals->paid),
+                'credit_limit' => $client->credit_limit !== null ? (float) $client->credit_limit : null,
             ],
         ]);
     }
@@ -122,6 +127,15 @@ class ClientController extends Controller
      */
     public function all(): JsonResponse
     {
-        return response()->json(Client::orderBy('name')->get(['id', 'name', 'phone', 'city']));
+        $clients = Client::orderBy('name')->get(['id', 'name', 'type', 'phone', 'city', 'credit_limit']);
+
+        // Current debt, so the point of sale can warn before a credit sale
+        $debts = \App\Models\Sale::where('status', '!=', 'paid')->whereNotNull('client_id')
+            ->groupBy('client_id')
+            ->selectRaw('client_id, SUM(total - returned_amount - paid_amount) as due')
+            ->pluck('due', 'client_id');
+        $clients->each(fn ($c) => $c->balance_due = (float) ($debts[$c->id] ?? 0));
+
+        return response()->json($clients);
     }
 }

@@ -1,241 +1,254 @@
-# 🎤 Script de présentation orale — Application de Gestion de Quincaillerie
+# 🎤 Script de présentation orale — Quincaillerie Pro
 
-> **Durée estimée :** 5 à 7 minutes  
-> **Ton :** naturel, confiant, pédagogique  
+> **Durée estimée :** 10 à 12 minutes (version courte de 6 minutes en fin de document)
+> **Ton :** naturel, confiant, pédagogique
 > **Cible :** votre professeur
+> **Fil conducteur :** on suit **une journée réelle** dans la quincaillerie, du matin à la fermeture.
 
 ---
 
-## 1. INTRODUCTION RAPIDE (30 secondes)
+## 0. AVANT DE COMMENCER (à faire 10 minutes avant)
 
-> *(Face au professeur, debout ou assis devant l'écran, sourire)*
-
-« Bonjour monsieur / madame. Aujourd'hui je vais vous présenter mon projet : **une application de gestion de quincaillerie**.
-
-Elle permet de gérer facilement les **produits**, le **stock**, les **clients**, les **fournisseurs** et les **ventes** d'une quincaillerie. Tout est centralisé : on sait en temps réel ce qu'on a en stock, ce qu'on a vendu, et ce qui manque.
-
-L'application est développée avec **Angular** pour le frontend et **Laravel** pour l'API backend.»
+- Lancer **WampServer** (icône verte), puis le backend (`php artisan serve`) et le frontend (`npm start`).
+- Ouvrir http://localhost:4200 et vérifier qu'on arrive sur la page de connexion.
+- Préparer **un devis** déjà enregistré (pour la conversion) et **un client avec un numéro de téléphone**.
+- Mettre le navigateur en **plein écran** (F11) et le zoom à 100 %.
+- Choisir le mode clair (plus lisible au projecteur). Le mode sombre sera montré en bonus.
 
 ---
 
-## 2. PAGE DE CONNEXION
+## 1. INTRODUCTION (40 secondes)
 
-> *(Montrer l'écran de login avec le logo outil / "Gestion Quincaillerie")*
+> *(Face au professeur, sourire)*
 
-« On commence ici, sur la **page de connexion**.
+« Bonjour monsieur / madame. Je vais vous présenter **Quincaillerie Pro**, une application web de gestion pour une quincaillerie.
 
-C'est la porte d'entrée de l'application. Seuls les utilisateurs authentifiés peuvent accéder aux données. Ici je vais me connecter avec mon compte.
+Le problème de départ est simple : dans beaucoup de quincailleries, le stock est suivi sur un cahier, les dettes des clients sont notées à la main, et le soir on ne sait pas exactement combien d'argent devrait se trouver dans la caisse.
 
-— Je saisis mon **email**…  
-— Et mon **mot de passe**…  
-— Et là, **je clique sur "Se connecter"**.
+L'application répond à ça : elle gère **la vente au comptoir**, **le stock**, **les devis**, **les dettes des clients**, **la clôture de caisse** et les **rapports**.
 
-Comme vous pouvez le voir, on peut aussi cocher "Se souvenir de moi" pour rester connecté. Et si j'ai un message d'erreur, il s'affiche juste ici en rouge.»
-
-> *(Cliquer sur le bouton de connexion)*
+Côté technique, c'est une **API Laravel** pour le backend, un frontend **Angular**, et une base **MySQL**. Je vais vous la présenter en suivant une journée de travail. »
 
 ---
 
-## 3. TABLEAU DE BORD (DASHBOARD)
+## 2. CONNEXION ET RÔLES (40 secondes)
 
-> *(On arrive sur le Dashboard — geste vers les 4 cartes en haut)*
+> *(Page de connexion)*
 
-« Et voilà, on arrive sur le **tableau de bord**.
+« Tout commence par la connexion. Chaque employé a son compte, et **chaque compte a un rôle** :
 
-Comme vous pouvez le voir, tout est résumé d'un coup d'œil. On a **quatre cartes** ici :
+- l'**administrateur** a accès à tout, y compris les utilisateurs et les paramètres ;
+- le **gestionnaire** s'occupe du catalogue, du stock et des rapports ;
+- le **caissier** vend, encaisse et gère les clients.
 
-1. **Ventes du jour** : combien j'ai vendu aujourd'hui, avec la croissance par rapport à hier.
-2. **Ventes du mois** : le total du mois en cours.
-3. **Valeur du stock** : la valeur totale de tout ce qui est en magasin.
-4. **Stock faible** : le nombre de produits qui approchent la rupture.
+Pour la démonstration, j'ai ces comptes en accès rapide. Je me connecte en **administrateur**. »
 
-> *(Pointer vers le graphique à gauche)*
+> *(Cliquer sur « Administrateur »)*
 
-Ici on a un **graphique des ventes par catégorie** : ça permet de voir quels types de produits se vendent le mieux — outils, peinture, quincaillerie, etc.
-
-> *(Pointer vers la carte de droite)*
-
-À côté, il y a les **alertes stock** : si un produit est presque en rupture, il apparaît ici en orange. Si tout va bien, il écrit "Tout va bien, aucun produit en rupture".
-
-> *(Scroller vers le bas)*
-
-Et en bas, on voit les **ventes récentes** : numéro de facture, client, montant, statut et date. On voit bien les badges colorés : vert pour **Payé**, orange pour **Partiel**, rouge pour **Impayé**.»
+« La sécurité ne dépend pas seulement de l'interface : **c'est le serveur qui vérifie les droits** à chaque requête. Même si un caissier tapait l'adresse d'une page d'administration, l'API refuserait. Je vous le montrerai à la fin. »
 
 ---
 
-## 4. GESTION DES PRODUITS
+## 3. TABLEAU DE BORD (1 minute)
 
-> *(Cliquer sur "Produits" dans le menu latéral à gauche)*
+> *(On arrive sur le tableau de bord)*
 
-« Maintenant je vais aller dans la **gestion des produits**.
+« Voici le tableau de bord. En haut, les **quatre indicateurs clés** :
 
-Ici on voit la liste complète des produits. On a : le nom, la catégorie, le fournisseur, le prix d'achat, le prix de vente, la quantité en stock, et le statut.
+1. les **ventes du jour**, comparées à hier ;
+2. le **chiffre d'affaires du mois** ;
+3. ce qui a **réellement été encaissé** ce mois, avec la **marge estimée** ;
+4. les **créances clients** : l'argent que les clients nous doivent encore.
 
-> *(Pointer un produit avec le badge vert/orange/rouge)*
+> *(Pointer le graphique)*
 
-Le statut change automatiquement : **En stock** en vert, **Faible** en orange si on passe sous le seuil d'alerte, et **Rupture** en rouge si c'est à zéro.
+Le graphique compare, mois par mois, **ce qu'on a vendu** en orange et **ce qu'on a encaissé** en bleu. L'écart entre les deux, ce sont les ventes à crédit.
 
-### Ajouter un produit
+> *(Pointer les alertes)*
 
-« Je vais maintenant vous montrer comment **ajouter un produit**.
-
-— **Je clique sur le bouton "Nouveau produit"** en haut à droite.
-— Un formulaire s'ouvre. Je remplis le **nom du produit**… par exemple "Marteau de charpentier".
-— Le **prix d'achat**… disons 2500 CFA.
-— Le **prix de vente**… 3500 CFA.
-— La **quantité en stock**… 50 unités.
-— Le **seuil d'alerte**… mettons 10. Dès qu'il restera 10 marteaux, l'application m'enverra une alerte.
-— Je choisis la **catégorie**… et le **fournisseur**.
-— Et là, **je clique sur "Enregistrer"**.
-
-Le produit apparaît immédiatement dans la liste."
-
-### Modifier un produit
-
-« Si je veux **modifier** un produit, c'est simple.
-
-— **Je clique sur l'icône crayon** ici, à droite du produit.
-— Le même formulaire s'ouvre avec les données déjà remplies.
-— Je change ce que je veux… par exemple le prix de vente ou le stock.
-— **J'enregistre**, et c'est mis à jour instantanément."
-
-### Supprimer un produit
-
-« Pour **supprimer**, je clique sur **l'icône poubelle**.
-
-Une confirmation s'affiche : "Êtes-vous sûr de vouloir supprimer ?"
-
-— Je confirme… et le produit disparaît de la liste.
-
-On peut aussi **rechercher** un produite par son nom en haut, ou **filtrer par catégorie** avec le menu déroulant. Et il y a la pagination en bas si on a beaucoup de produits.»
+À droite, les **alertes de stock** : les produits qui passent sous leur seuil. On les retrouve aussi dans la **cloche** en haut. »
 
 ---
 
-## 5. GESTION DU STOCK
+## 4. LE POINT DE VENTE (2 minutes) ⭐ moment fort
 
-> *(Rester sur la page Produits ou retourner au Dashboard pour les alertes)*
+> *(Cliquer sur « Point de vente »)*
 
-« Concernant la **gestion du stock**, elle est entièrement **automatique**.
+« Le matin, un client arrive au comptoir. Voici l'écran de caisse.
 
-Quand on crée un produit, on définit sa quantité initiale. Mais le stock évolue tout seul :
+— Je clique sur les produits : ils s'ajoutent au panier. Le petit badge orange indique la quantité.
+— Je peux aussi **chercher par nom ou par référence**, et avec une douchette code-barres il suffit de scanner.
 
-- **Quand on vend un produit**, le stock diminue automatiquement.
-- **Si on supprime une vente**, le stock est **restauré**.
-- Si le stock passe sous le seuil d'alerte, le produit passe en **orange**.
-- S'il atteint zéro, il passe en **rouge**.
+> *(Choisir un client professionnel dans la liste)*
 
-> *(Retourner sur le Dashboard, pointer les alertes)*
+Ce client est un **professionnel**, un entrepreneur. Regardez : les prix passent automatiquement au **prix de gros** (en bleu). C'est aussi le cas pour n'importe quel client qui achète en grande quantité, par exemple à partir de 10 sacs de ciment.
 
-Et comme on a vu tout à l'heure, ces alertes remontent directement sur le **tableau de bord**, ici dans la carte "Stock faible". Ça permet de réagir vite avant la rupture.»
+> *(Montrer les totaux)*
 
----
+Le sous-total, la **TVA à 18 %** et le total se calculent tout seuls.
 
-## 6. ENREGISTREMENT D'UNE VENTE
+> *(Cliquer sur « Encaisser »)*
 
-> *(Cliquer sur "Ventes" dans le menu latéral)*
+Au moment de payer, je choisis le moyen de paiement : **espèces, Wave, Orange Money**, carte… Je saisis le montant reçu et l'application calcule **la monnaie à rendre**.
 
-« Maintenant, passons aux **ventes**.
+Si le client ne paie qu'une partie, c'est une **vente à crédit**. L'application l'autorise seulement si un client est choisi, et elle **refuse** si ce client dépasse son **plafond de crédit**.
 
-C'est probablement la partie la plus importante : enregistrer une vente et générer une facture.
+> *(Valider)*
 
-On voit ici la liste des ventes déjà effectuées : numéro de facture, client, total, TVA, statut de paiement et date.
+La vente est enregistrée. Je peux **imprimer le ticket** directement : c'est un format 80 mm, celui des imprimantes de caisse.
 
-### Créer une nouvelle vente
-
-« Je vais **créer une nouvelle vente**.
-
-— **Je clique sur "Nouvelle vente"**.
-— D'abord, je **sélectionne le client** dans la liste.
-— Ensuite, j'**ajoute les produits** : je choisis un produit dans le menu, je mets la quantité… par exemple 2 marteaux… et **je clique sur le "+"**.
-
-> *(Montrer le tableau des articles ajoutés)*
-
-L'article apparaît dans le tableau avec le prix unitaire, la quantité et le sous-total. Je peux ajouter plusieurs produits. Si je me trompe, **je clique sur la croix** pour retirer un article.
-
-> *(Pointer les totaux en bas)*
-
-En bas, tout se calcule **automatiquement** :
-- le **sous-total**
-- la **TVA à 19%**
-- et le **total général**
-
-— Une fois que tout est bon, **j'enregistre la vente**.
-
-### Impact sur le stock
-
-« Et là, l'application fait deux choses en arrière-plan :
-
-1. Elle **génère un numéro de facture** automatiquement, par exemple SAL-20250115-00001.
-2. Elle **décrémente le stock** de chaque produit vendu.
-
-> *(Retourner sur la page Produits ou montrer le dashboard)*
-
-Si je retourne dans les produits, la quantité du marteau a diminué de 2. Et si le stock passe sous le seuil, le statut passe en orange. C'est totalement lié."
-
-### Voir le détail et télécharger la facture
-
-« Si je veux voir une vente en détail, **je clique sur l'icône œil**.
-
-Un panneau s'ouvre sur la droite avec tous les détails : facture, client, date, statut, articles, et les totaux.
-
-> *(Pointer le bouton PDF)*
-
-Et là, **je peux télécharger la facture en PDF** d'un seul clic. Le PDF est généré automatiquement avec le logo de l'entreprise, les infos client, et le détail des articles.
-
-Je peux aussi **changer le statut** de la vente ici : Payé, Impayé, ou Partiel. Ça met à jour tout de suite.»
+En arrière-plan, le stock de chaque produit a **diminué automatiquement**, et le mouvement est enregistré dans un journal. »
 
 ---
 
-## 7. RÉSULTAT FINAL & CONCLUSION
+## 5. SUIVI DES VENTES, PAIEMENTS ET RETOURS (1 min 30)
 
-> *(Retourner sur le Dashboard pour la conclusion)*
+> *(Cliquer sur « Ventes », ouvrir une vente partiellement payée)*
 
-« Pour résumer, cette application de gestion de quincaillerie permet de :
+« Toutes les ventes sont ici. En ouvrant une vente, on voit les articles, les totaux et **l'historique des paiements**.
 
-- **Sécuriser l'accès** avec une authentification par email et mot de passe.
-- **Visualiser en temps réel** les ventes, le stock et les alertes sur un tableau de bord clair.
-- **Gérer facilement les produits** : ajout, modification, suppression, recherche et filtre.
-- **Suivre le stock automatiquement**, avec des alertes quand un produit est faible ou en rupture.
-- **Enregistrer des ventes** avec calcul automatique de la TVA et génération de factures PDF.
-- **Exporter les données** en PDF ou Excel si besoin.
+Ce client revient payer le reste ? J'enregistre un **paiement**, en Wave par exemple, et la vente passe automatiquement au statut **Payée**.
 
-Tout est interconnecté : les ventes impactent le stock, le stock alimente les alertes, et les alertes remontent sur le dashboard. L'utilisateur a une vision globale et immédiate de son activité.
+> *(Cliquer sur « Retour »)*
 
-Voilà, merci pour votre attention. Avez-vous des questions ? »
+Autre cas fréquent : un client rapporte un article. Je fais un **retour partiel** : je choisis la quantité rapportée, l'application calcule **l'avoir**, remet l'article **en stock**, et si le client avait déjà payé, elle indique **combien lui rendre**.
+
+> *(Pointer le bouton WhatsApp)*
+
+Enfin, je peux envoyer le récapitulatif de la facture au client **par WhatsApp** en un clic. »
+
+---
+
+## 6. LES DEVIS (1 minute)
+
+> *(Cliquer sur « Devis », ouvrir le devis préparé)*
+
+« Un artisan prépare un chantier et demande un prix avant d'acheter. Je lui fais un **devis**. On peut y mettre des produits du catalogue mais aussi des **lignes libres**, comme le transport.
+
+Point important : un devis **ne touche pas au stock**. Il a une date de validité, et je suis son statut : envoyé, accepté, refusé.
+
+> *(Cliquer sur « Convertir en vente »)*
+
+Le jour où le client accepte, je clique sur **Convertir en vente** : la vente est créée avec les mêmes prix, et c'est **à ce moment-là** que le stock diminue. »
+
+---
+
+## 7. STOCK ET APPROVISIONNEMENTS (1 minute)
+
+> *(Cliquer sur « Approvisionnements », puis « Nouvel approvisionnement »)*
+
+« Quand le fournisseur livre, j'enregistre la **réception**. Ce bouton ajoute automatiquement **tous les produits en alerte**, avec une quantité suggérée. Je valide, et le stock ainsi que le prix d'achat sont mis à jour.
+
+> *(Cliquer sur « Mouvements »)*
+
+Chaque entrée et chaque sortie de marchandise est tracée ici : vente, retour, livraison, correction d'inventaire… avec la date, la personne et le motif. On sait **toujours pourquoi** un stock a changé. »
+
+---
+
+## 8. CLÔTURE DE CAISSE (1 minute) ⭐ moment fort
+
+> *(Cliquer sur « Caisse »)*
+
+« Le soir, à la fermeture, le caissier fait la **clôture de caisse**.
+
+L'application affiche ce qui a été encaissé dans la journée, **par moyen de paiement**, et donc combien d'**espèces** devraient se trouver dans le tiroir.
+
+> *(Ouvrir l'aide au comptage, saisir quelques billets)*
+
+Le caissier compte ses billets. L'écart s'affiche en direct : **caisse juste**, **excédent** ou **manquant**. On valide, et la clôture est archivée dans l'historique. Le gérant peut ainsi contrôler chaque journée. »
+
+---
+
+## 9. RAPPORTS (45 secondes)
+
+> *(Cliquer sur « Rapports »)*
+
+« Pour le gérant, la page **Rapports** donne sur la période choisie : le chiffre d'affaires net, la **marge**, le panier moyen, les ventes par catégorie, par vendeur et par moyen de paiement.
+
+> *(Pointer « Stock dormant »)*
+
+Le **stock dormant** liste les produits qui ne se sont pas vendus : de l'argent immobilisé sur les étagères. Tout s'exporte **en Excel**. »
+
+---
+
+## 10. ADMINISTRATION ET DÉMONSTRATION DES DROITS (45 secondes)
+
+> *(Cliquer sur « Paramètres »)*
+
+« Dans les paramètres, on renseigne les informations de l'entreprise pour les factures (NINEA, RCCM), le taux de TVA et le **format des factures** : ticket, A5 ou A4. La base de données est aussi **sauvegardée automatiquement chaque soir**.
+
+> *(Se déconnecter, se reconnecter en « Caissier »)*
+
+Maintenant je me connecte en **caissier** : le menu est plus court, il n'y a plus de rapports, plus d'administration, et les prix d'achat sont masqués. C'est le principe du **moindre privilège**. »
+
+---
+
+## 11. CONCLUSION (40 secondes)
+
+> *(Revenir au tableau de bord)*
+
+« Pour résumer, Quincaillerie Pro couvre toute la journée d'une quincaillerie :
+
+- **vendre vite** au comptoir, avec les paiements mobiles utilisés au Sénégal ;
+- **ne jamais perdre le fil du stock**, avec un journal de chaque mouvement ;
+- **suivre les dettes** des clients avec des plafonds de crédit ;
+- **contrôler la caisse** chaque soir ;
+- **piloter** l'activité avec des rapports.
+
+Côté qualité, le projet a **45 tests automatisés** : 20 sur l'API et 25 sur l'interface. Ils vérifient par exemple qu'une vente est entièrement annulée si un produit manque en stock.
+
+Merci pour votre attention. Avez-vous des questions ? »
+
+---
+
+## ❓ QUESTIONS PROBABLES DU PROFESSEUR
+
+| Question | Réponse courte |
+|---|---|
+| **Comment garantissez-vous que le stock reste juste ?** | Toute modification passe par un seul service (`StockService`) qui enregistre un mouvement. Les ventes sont faites dans une **transaction** : si un produit manque, toute la vente est annulée. Une ligne de la base est aussi **verrouillée** pendant la vente pour éviter que deux caisses vendent le même dernier article. |
+| **Comment gérez-vous la sécurité ?** | Authentification par jeton (Laravel Sanctum), toutes les routes protégées, vérification du **rôle côté serveur** (middleware), limite de 5 tentatives de connexion par minute, mots de passe chiffrés, comptes désactivables. |
+| **Pourquoi Laravel et Angular ?** | Séparer l'API et l'interface permet de faire plus tard une application mobile qui réutilise la même API. Laravel fournit l'authentification, les validations et les transactions ; Angular structure bien une application de gestion avec beaucoup d'écrans. |
+| **Comment sont numérotées les factures ?** | À partir de l'identifiant en base (`FAC-2026-000015`), donc unique même après une annulation. L'ancienne méthode comptait les ventes et créait des doublons. |
+| **Que se passe-t-il si le client rapporte un article ?** | On crée un **avoir** : l'article revient en stock, la dette baisse, et si le client avait trop payé, un remboursement est enregistré. La facture d'origine n'est jamais modifiée. |
+| **Et si le serveur tombe en panne ?** | Sauvegarde automatique de la base chaque soir, 30 jours conservés, téléchargeable depuis les paramètres et restaurable via phpMyAdmin. |
+| **Comment avez-vous testé ?** | Tests fonctionnels PHPUnit sur une base SQLite en mémoire (ventes, stock, crédit, retours, devis, caisse, droits) et tests unitaires Angular (calculs du point de vente, session expirée…). |
+| **Quelles améliorations futures ?** | Étiquettes code-barres, photos des produits, application mobile pour les livreurs, synchronisation hors ligne. |
+
+---
+
+## ⏱️ VERSION COURTE (6 minutes)
+
+Si le temps est limité, gardez uniquement : **1** Introduction → **3** Tableau de bord → **4** Point de vente → **5** Retour (sans les paiements) → **8** Clôture de caisse → **11** Conclusion.
 
 ---
 
 ## 🎭 CONSEILS POUR BIEN PRÉSENTER À L'ORAL
 
 ### Gestes et posture
-- **Pointez l'écran** avec votre doigt ou le curseur quand vous citez un élément ("comme vous pouvez le voir ici…").
+- **Pointez l'écran** avec le curseur quand vous citez un élément (« comme vous pouvez le voir ici… »).
 - **Regardez votre professeur**, pas uniquement l'écran. Alternez : écran → professeur → écran.
-- Gardez une **posture droite**, ne vous affaissez pas sur la chaise.
+- Gardez une **posture droite**.
 
 ### Rythme et voix
-- Parlez **posément** : pas trop vite, même si vous êtes stressé.
-- Faites de **petites pauses** entre chaque étape (respirez).
-- Variez l'**intonation** : montez un peu le ton sur les points importants (alertes, automatisation, PDF).
+- Parlez **posément**, même si vous êtes stressé.
+- Faites de **petites pauses** entre chaque partie.
+- Montez un peu le ton sur les moments forts : **point de vente**, **retour**, **clôture de caisse**.
 
 ### Organisation pratique
-- **Ouvrez les pages à l'avance** dans votre navigateur pour éviter les temps de chargement.
-- **Pré-remplissez** quelques données (produits, clients) avant la présentation pour gagner du temps.
-- Ayez un **plan B** : si une fonctionnalité bug, passez à la suivante en disant "normalement, cela fait aussi…".
-
-### Interaction
-- Demandez **"Vous voyez bien ?"** ou **"Est-ce clair ?"** de temps en temps pour créer du lien.
-- Si le professeur pose une question en cours, **répondez brièvement** puis reprenez le fil.
+- Faites **une répétition complète** la veille, chronomètre en main.
+- Préparez les données (un devis, un client avec téléphone, une vente partiellement payée).
+- Ayez un **plan B** : si une fonctionnalité bloque, passez à la suivante en disant « normalement, ici on voit aussi… ».
 
 ### Phrases-clés à utiliser naturellement
+
 | Situation | Ce que vous dites |
 |---|---|
-| Transition | "Maintenant, je vais passer à…" |
-| Montrer | "Ici, comme vous pouvez le voir…" |
-| Action | "Je clique sur…" / "Je sélectionne…" |
-| Résultat | "Et voilà, automatiquement…" |
-| Insister | "L'avantage ici, c'est que…" |
+| Transition | « Maintenant, passons à… » |
+| Montrer | « Ici, comme vous pouvez le voir… » |
+| Action | « Je clique sur… » / « Je sélectionne… » |
+| Résultat | « Et automatiquement… » |
+| Insister | « Le vrai problème que ça règle, c'est… » |
 
 ---
 
 **Bonne présentation ! 🚀**
-

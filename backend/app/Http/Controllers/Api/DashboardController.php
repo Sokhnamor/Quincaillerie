@@ -57,7 +57,7 @@ class DashboardController extends Controller
         // Same point in the previous month, for a fair month-to-date comparison
         $lastMonthSameDay = $lastMonthStart->copy()->addDays($now->day - 1)->setTimeFrom($now)->min($monthStart);
 
-        $revenue = fn (Carbon $from, Carbon $to) => (float) Sale::whereBetween('created_at', [$from, $to])->sum('total');
+        $revenue = fn (Carbon $from, Carbon $to) => (float) Sale::whereBetween('created_at', [$from, $to])->sum(DB::raw('total - returned_amount'));
 
         $todayRevenue = $revenue($today, $now);
         $yesterdayRevenue = $revenue($yesterday, $today->copy()->subSecond());
@@ -65,14 +65,14 @@ class DashboardController extends Controller
         $lastMonthRevenue = $revenue($lastMonthStart, $lastMonthSameDay);
 
         $receivables = Sale::where('status', '!=', 'paid')
-            ->selectRaw('COALESCE(SUM(total - paid_amount),0) as due, COUNT(*) as count')
+            ->selectRaw('COALESCE(SUM(total - returned_amount - paid_amount),0) as due, COUNT(*) as count')
             ->first();
 
         $monthMargin = (float) DB::table('sale_items')
             ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
             ->join('products', 'sale_items.product_id', '=', 'products.id')
             ->where('sales.created_at', '>=', $monthStart)
-            ->selectRaw('COALESCE(SUM((sale_items.unit_price - products.purchase_price) * sale_items.quantity),0) as margin')
+            ->selectRaw('COALESCE(SUM((sale_items.unit_price - products.purchase_price) * (sale_items.quantity - sale_items.returned_quantity)),0) as margin')
             ->value('margin');
 
         return [
@@ -99,7 +99,7 @@ class DashboardController extends Controller
     {
         // Last 12 months (grouped in PHP to stay database-agnostic)
         $from = now()->startOfMonth()->subMonths(11);
-        $sales = Sale::where('created_at', '>=', $from)->get(['total', 'created_at']);
+        $sales = Sale::where('created_at', '>=', $from)->get(['total', 'returned_amount', 'created_at']);
         $payments = SalePayment::where('created_at', '>=', $from)->get(['amount', 'created_at']);
 
         $monthly = [];
@@ -116,7 +116,7 @@ class DashboardController extends Controller
         foreach ($sales as $sale) {
             $key = $sale->created_at->format('Y-m');
             if (isset($monthly[$key])) {
-                $monthly[$key]['total'] += (float) $sale->total;
+                $monthly[$key]['total'] += $sale->net_total;
                 $monthly[$key]['count']++;
             }
         }
@@ -136,7 +136,7 @@ class DashboardController extends Controller
         foreach ($sales->where('created_at', '>=', $dayFrom) as $sale) {
             $key = $sale->created_at->format('Y-m-d');
             if (isset($daily[$key])) {
-                $daily[$key]['total'] += (float) $sale->total;
+                $daily[$key]['total'] += $sale->net_total;
                 $daily[$key]['count']++;
             }
         }
@@ -146,7 +146,7 @@ class DashboardController extends Controller
             ->join('categories', 'products.category_id', '=', 'categories.id')
             ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
             ->where('sales.created_at', '>=', now()->subMonths(6))
-            ->select('categories.name as category', DB::raw('SUM(sale_items.subtotal) as total'))
+            ->select('categories.name as category', DB::raw('SUM(sale_items.unit_price * (sale_items.quantity - sale_items.returned_quantity)) as total'))
             ->groupBy('categories.id', 'categories.name')
             ->orderByDesc('total')
             ->limit(6)

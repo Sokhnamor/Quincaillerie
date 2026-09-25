@@ -29,6 +29,8 @@ const NAV: NavSection[] = [
       { label: 'Tableau de bord', icon: 'fa-gauge-high', link: '/dashboard' },
       { label: 'Point de vente', icon: 'fa-cash-register', link: '/pos' },
       { label: 'Ventes', icon: 'fa-receipt', link: '/sales' },
+      { label: 'Devis', icon: 'fa-file-signature', link: '/quotes' },
+      { label: 'Caisse', icon: 'fa-vault', link: '/cash' },
       { label: 'Clients', icon: 'fa-users', link: '/clients' },
     ],
   },
@@ -40,6 +42,12 @@ const NAV: NavSection[] = [
       { label: 'Approvisionnements', icon: 'fa-truck-ramp-box', link: '/purchases', roles: MANAGERS },
       { label: 'Mouvements', icon: 'fa-arrow-right-arrow-left', link: '/stock', roles: MANAGERS },
       { label: 'Fournisseurs', icon: 'fa-industry', link: '/suppliers' },
+    ],
+  },
+  {
+    title: 'Analyse',
+    items: [
+      { label: 'Rapports', icon: 'fa-chart-pie', link: '/reports', roles: MANAGERS },
     ],
   },
   {

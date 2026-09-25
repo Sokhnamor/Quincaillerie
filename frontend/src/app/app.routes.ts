@@ -33,6 +33,23 @@ export const routes: Routes = [
         loadComponent: () => import('./features/sales/sales.component').then(m => m.SalesComponent)
       },
       {
+        path: 'quotes',
+        title: 'Devis · Quincaillerie Pro',
+        loadComponent: () => import('./features/quotes/quotes.component').then(m => m.QuotesComponent)
+      },
+      {
+        path: 'cash',
+        title: 'Clôture de caisse · Quincaillerie Pro',
+        loadComponent: () => import('./features/cash/cash.component').then(m => m.CashComponent)
+      },
+      {
+        path: 'reports',
+        title: 'Rapports · Quincaillerie Pro',
+        canActivate: [roleGuard],
+        data: MANAGERS,
+        loadComponent: () => import('./features/reports/reports.component').then(m => m.ReportsComponent)
+      },
+      {
         path: 'clients',
         title: 'Clients · Quincaillerie Pro',
         loadComponent: () => import('./features/clients/clients.component').then(m => m.ClientsComponent)

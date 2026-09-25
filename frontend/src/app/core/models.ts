@@ -3,7 +3,9 @@ export type SaleStatus = 'paid' | 'partial' | 'unpaid';
 export type StockStatus = 'in_stock' | 'low_stock' | 'out_of_stock';
 export type PaymentMethod = 'cash' | 'wave' | 'orange_money' | 'card' | 'transfer' | 'cheque';
 export type InvoiceFormat = 'ticket' | 'a5' | 'a4';
-export type MovementType = 'initial' | 'sale' | 'sale_cancel' | 'purchase' | 'purchase_cancel' | 'adjustment';
+export type MovementType = 'initial' | 'sale' | 'sale_cancel' | 'return' | 'purchase' | 'purchase_cancel' | 'adjustment';
+export type ClientType = 'particulier' | 'professionnel';
+export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'converted';
 
 export interface Role {
   id: number;
@@ -45,6 +47,8 @@ export interface Supplier {
 export interface Client {
   id: number;
   name: string;
+  type?: ClientType;
+  credit_limit?: number | string | null;
   phone?: string | null;
   email?: string | null;
   address?: string | null;
@@ -52,6 +56,13 @@ export interface Client {
   sales_count?: number;
   sales_sum_total?: number | string | null;
   balance_due?: number;
+}
+
+export interface ClientStats {
+  sales_count: number;
+  total_spent: number;
+  balance_due: number;
+  credit_limit: number | null;
 }
 
 export interface Product {
@@ -62,6 +73,8 @@ export interface Product {
   description?: string | null;
   purchase_price: number | string;
   selling_price: number | string;
+  wholesale_price?: number | string | null;
+  wholesale_min_qty?: number | null;
   stock: number;
   alert_threshold: number;
   stock_status: StockStatus;
@@ -76,6 +89,7 @@ export interface SaleItem {
   product_id: number;
   product_name: string;
   quantity: number;
+  returned_quantity?: number;
   unit_price: number | string;
   subtotal: number | string;
   product?: Pick<Product, 'id' | 'name' | 'reference' | 'unit'> | null;
@@ -100,6 +114,8 @@ export interface Sale {
   tax_amount: number | string;
   discount: number | string;
   total: number | string;
+  returned_amount?: number | string;
+  net_total?: number;
   paid_amount: number | string;
   remaining_amount: number;
   status: SaleStatus;
@@ -110,6 +126,112 @@ export interface Sale {
   user?: Pick<User, 'id' | 'name'> | null;
   items?: SaleItem[];
   payments?: SalePayment[];
+  returns?: SaleReturn[];
+}
+
+export interface SaleReturn {
+  id: number;
+  number: string;
+  sale_id: number;
+  reason?: string | null;
+  subtotal: number | string;
+  tax_amount: number | string;
+  discount_share: number | string;
+  total: number | string;
+  refund_amount: number | string;
+  refund_method?: PaymentMethod | null;
+  created_at: string;
+  user?: Pick<User, 'id' | 'name'> | null;
+  items?: { id: number; quantity: number; unit_price: number | string; subtotal: number | string; product?: Pick<Product, 'id' | 'name'> | null }[];
+}
+
+export interface QuoteItem {
+  id?: number;
+  product_id: number | null;
+  designation: string;
+  quantity: number;
+  unit_price: number | string;
+  subtotal?: number | string;
+  product?: (Pick<Product, 'id' | 'name' | 'reference' | 'unit'> & { stock?: number }) | null;
+}
+
+export interface Quote {
+  id: number;
+  number: string;
+  client_id: number | null;
+  client_name?: string | null;
+  customer_name: string;
+  subtotal: number | string;
+  tax_rate: number | string;
+  tax_amount: number | string;
+  discount: number | string;
+  total: number | string;
+  status: QuoteStatus;
+  is_expired: boolean;
+  valid_until: string | null;
+  notes?: string | null;
+  created_at: string;
+  items_count?: number;
+  client?: Client | null;
+  user?: Pick<User, 'id' | 'name'> | null;
+  items?: QuoteItem[];
+  sale?: Pick<Sale, 'id' | 'invoice_number'> | null;
+}
+
+export interface CashSummary {
+  date: string;
+  sales_count: number;
+  sales_total: number;
+  returns_total: number;
+  refunded: number;
+  by_method: Partial<Record<PaymentMethod, { total: number; count: number }>>;
+  collected_total: number;
+  expected_cash: number;
+  closings: CashClosing[];
+}
+
+export interface CashClosing {
+  id: number;
+  business_date: string;
+  sales_count: number;
+  sales_total: number | string;
+  returns_total: number | string;
+  collected_by_method: Partial<Record<PaymentMethod, { total: number; count: number }>>;
+  expected_cash: number | string;
+  counted_cash: number | string;
+  difference: number | string;
+  notes?: string | null;
+  created_at: string;
+  user?: Pick<User, 'id' | 'name'> | null;
+}
+
+export interface Report {
+  period: { start: string; end: string };
+  totals: {
+    sales_count: number;
+    gross_revenue: number;
+    returns: number;
+    net_revenue: number;
+    discounts: number;
+    tax: number;
+    collected: number;
+    unpaid: number;
+    margin: number;
+    margin_rate: number;
+    average_basket: number;
+  };
+  daily: { date: string; count: number; revenue: number }[];
+  by_seller: { name: string; count: number; revenue: number | string }[];
+  by_payment_method: { method: PaymentMethod; total: number | string; count: number }[];
+  by_category: { category: string; quantity: number | string; revenue: number | string; margin: number | string }[];
+  top_products: { id: number; name: string; reference: string; quantity: number | string; revenue: number | string; margin: number | string }[];
+  sleeping_products: { id: number; name: string; reference: string; unit: string; stock: number; value: number }[];
+}
+
+export interface Backup {
+  name: string;
+  size: number;
+  created_at: string;
 }
 
 export interface PurchaseItem {

@@ -20,6 +20,8 @@ class Product extends Model
         'supplier_id',
         'purchase_price',
         'selling_price',
+        'wholesale_price',
+        'wholesale_min_qty',
         'stock',
         'alert_threshold',
         'description'
@@ -28,6 +30,8 @@ class Product extends Model
     protected $casts = [
         'purchase_price' => 'decimal:2',
         'selling_price' => 'decimal:2',
+        'wholesale_price' => 'decimal:2',
+        'wholesale_min_qty' => 'integer',
         'stock' => 'integer',
         'alert_threshold' => 'integer'
     ];

@@ -28,6 +28,7 @@ class SalesExport implements FromCollection, WithHeadings, ShouldAutoSize, WithS
             (float) $sale->tax_amount,
             (float) $sale->discount,
             (float) $sale->total,
+            (float) $sale->returned_amount,
             (float) $sale->paid_amount,
             $sale->remaining_amount,
             self::STATUS[$sale->status] ?? $sale->status,
@@ -36,7 +37,7 @@ class SalesExport implements FromCollection, WithHeadings, ShouldAutoSize, WithS
 
     public function headings(): array
     {
-        return ['Facture', 'Date', 'Client', 'Vendeur', 'Sous-total', 'TVA', 'Remise', 'Total', 'Payé', 'Reste', 'Statut'];
+        return ['Facture', 'Date', 'Client', 'Vendeur', 'Sous-total', 'TVA', 'Remise', 'Total', 'Avoirs', 'Payé', 'Reste', 'Statut'];
     }
 
     public function styles(Worksheet $sheet): array

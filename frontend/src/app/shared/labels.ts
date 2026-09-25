@@ -1,4 +1,4 @@
-import { MovementType, PaymentMethod, SaleStatus, StockStatus } from '../core/models';
+import { MovementType, PaymentMethod, QuoteStatus, SaleStatus, StockStatus } from '../core/models';
 
 export const SALE_STATUS: Record<SaleStatus, { label: string; badge: string }> = {
   paid: { label: 'Payée', badge: 'badge-success' },
@@ -27,10 +27,38 @@ export const MOVEMENT_TYPES: Record<MovementType, { label: string; icon: string;
   initial: { label: 'Stock initial', icon: 'fa-flag', tone: 'neutral' },
   sale: { label: 'Vente', icon: 'fa-cart-shopping', tone: 'out' },
   sale_cancel: { label: 'Annulation vente', icon: 'fa-rotate-left', tone: 'in' },
+  return: { label: 'Retour client', icon: 'fa-arrow-rotate-left', tone: 'in' },
   purchase: { label: 'Approvisionnement', icon: 'fa-truck-ramp-box', tone: 'in' },
   purchase_cancel: { label: 'Annulation achat', icon: 'fa-rotate-left', tone: 'out' },
   adjustment: { label: 'Ajustement', icon: 'fa-sliders', tone: 'neutral' },
 };
+
+export const QUOTE_STATUS: Record<QuoteStatus, { label: string; badge: string }> = {
+  draft: { label: 'Brouillon', badge: '' },
+  sent: { label: 'Envoyé', badge: 'badge-info' },
+  accepted: { label: 'Accepté', badge: 'badge-success' },
+  rejected: { label: 'Refusé', badge: 'badge-danger' },
+  converted: { label: 'Converti en vente', badge: 'badge-brand' },
+};
+
+/**
+ * WhatsApp link with a pre-filled message. Senegalese numbers without
+ * country code get +221. Returns null when no usable number is given.
+ */
+export function whatsappUrl(phone: string | null | undefined, message: string): string | null {
+  let digits = (phone ?? '').replace(/[^\d+]/g, '');
+  if (!digits) {
+    return null;
+  }
+  if (digits.startsWith('+')) {
+    digits = digits.slice(1);
+  } else if (digits.startsWith('00')) {
+    digits = digits.slice(2);
+  } else if (digits.length === 9) {
+    digits = '221' + digits;
+  }
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+}
 
 export const UNITS = ['pièce', 'kg', 'm', 'm²', 'litre', 'sac', 'boîte', 'rouleau', 'paquet', 'lot'];
 

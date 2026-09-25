@@ -20,6 +20,7 @@ class Sale extends Model
         'tax_amount',
         'discount',
         'total',
+        'returned_amount',
         'status',
         'paid_amount',
         'notes'
@@ -31,10 +32,11 @@ class Sale extends Model
         'tax_amount' => 'decimal:2',
         'discount' => 'decimal:2',
         'total' => 'decimal:2',
+        'returned_amount' => 'decimal:2',
         'paid_amount' => 'decimal:2'
     ];
 
-    protected $appends = ['remaining_amount'];
+    protected $appends = ['remaining_amount', 'net_total'];
 
     public function client(): BelongsTo
     {
@@ -56,9 +58,20 @@ class Sale extends Model
         return $this->hasMany(SalePayment::class)->latest();
     }
 
+    public function returns(): HasMany
+    {
+        return $this->hasMany(SaleReturn::class)->latest();
+    }
+
+    /** Total after credit notes (returns) */
+    public function getNetTotalAttribute(): float
+    {
+        return round((float) $this->total - (float) $this->returned_amount, 2);
+    }
+
     public function getRemainingAmountAttribute(): float
     {
-        return max(0, round((float) $this->total - (float) $this->paid_amount, 2));
+        return max(0, round($this->net_total - (float) $this->paid_amount, 2));
     }
 
     /**
@@ -69,7 +82,7 @@ class Sale extends Model
         $paid = (float) $this->payments()->sum('amount');
 
         $this->paid_amount = $paid;
-        $this->status = static::statusFor($paid, (float) $this->total);
+        $this->status = static::statusFor($paid, $this->net_total);
         $this->save();
     }
 

@@ -95,6 +95,14 @@
     <table class="grand">
         <tr><td>TOTAL TTC</td><td class="right">{{ $money($sale->total) }} {{ $currency }}</td></tr>
     </table>
+    @if($sale->returned_amount > 0)
+        <table class="totals">
+            @foreach($sale->returns as $ret)
+            <tr><td class="muted">Avoir {{ $ret->number }}</td><td class="right">- {{ $money($ret->total) }}</td></tr>
+            @endforeach
+            <tr><td class="bold">NET À PAYER</td><td class="right bold">{{ $money($sale->net_total) }} {{ $currency }}</td></tr>
+        </table>
+    @endif
     <div class="rule-solid"></div>
 
     {{-- Paiements --}}

@@ -23,6 +23,8 @@ interface ProductForm {
   supplier_id: number | null;
   purchase_price: number | null;
   selling_price: number | null;
+  wholesale_price: number | null;
+  wholesale_min_qty: number | null;
   stock: number | null;
   alert_threshold: number | null;
   description: string;
@@ -173,6 +175,16 @@ interface ProductForm {
           }
         </div>
         <div class="field">
+          <label class="label" for="p-whole">Prix de gros HT</label>
+          <div class="input-suffix"><input id="p-whole" class="input num" type="number" min="0" name="wholesale_price" [(ngModel)]="form.wholesale_price" placeholder="Facultatif"><span>FCFA</span></div>
+          <span class="hint">Appliqué aux clients professionnels.</span>
+        </div>
+        <div class="field">
+          <label class="label" for="p-wqty">À partir de (quantité)</label>
+          <input id="p-wqty" class="input num" type="number" min="1" name="wholesale_min_qty" [(ngModel)]="form.wholesale_min_qty" placeholder="Ex. : 10" [disabled]="!form.wholesale_price">
+          <span class="hint">Prix de gros aussi pour tout client qui achète cette quantité.</span>
+        </div>
+        <div class="field">
           <label class="label" for="p-stock">{{ editing() ? 'Stock actuel' : 'Stock initial' }}</label>
           <input id="p-stock" class="input num" type="number" min="0" name="stock" [(ngModel)]="form.stock" [disabled]="!!editing()">
           @if (editing()) { <span class="hint">Utilisez « Ajuster le stock » pour le modifier.</span> }
@@ -247,6 +259,9 @@ interface ProductForm {
           <dt>Catégorie</dt><dd>{{ d.product.category?.name }}</dd>
           <dt>Fournisseur</dt><dd>{{ d.product.supplier?.name ?? '—' }}</dd>
           <dt>Seuil d'alerte</dt><dd>{{ d.product.alert_threshold }} {{ d.product.unit }}</dd>
+          @if (d.product.wholesale_price) {
+            <dt>Prix de gros</dt><dd>{{ d.product.wholesale_price | money }}{{ d.product.wholesale_min_qty ? ' dès ' + d.product.wholesale_min_qty + ' ' + d.product.unit : ' (pros)' }}</dd>
+          }
         </dl>
         @if (d.product.description) { <p class="muted small">{{ d.product.description }}</p> }
 
@@ -384,6 +399,8 @@ export class ProductsComponent implements OnInit {
           supplier_id: product.supplier_id,
           purchase_price: Number(product.purchase_price),
           selling_price: Number(product.selling_price),
+          wholesale_price: product.wholesale_price !== null && product.wholesale_price !== undefined ? Number(product.wholesale_price) : null,
+          wholesale_min_qty: product.wholesale_min_qty ?? null,
           stock: product.stock,
           alert_threshold: product.alert_threshold,
           description: product.description ?? '',
@@ -406,6 +423,8 @@ export class ProductsComponent implements OnInit {
       supplier_id: f.supplier_id,
       purchase_price: f.purchase_price,
       selling_price: f.selling_price,
+      wholesale_price: f.wholesale_price || null,
+      wholesale_min_qty: f.wholesale_price ? f.wholesale_min_qty || null : null,
       alert_threshold: f.alert_threshold,
       description: f.description || null,
     };
@@ -500,7 +519,7 @@ export class ProductsComponent implements OnInit {
   private emptyForm(): ProductForm {
     return {
       name: '', reference: '', unit: 'pièce', category_id: null, supplier_id: null,
-      purchase_price: null, selling_price: null, stock: 0, alert_threshold: 5, description: '',
+      purchase_price: null, selling_price: null, wholesale_price: null, wholesale_min_qty: null, stock: 0, alert_threshold: 5, description: '',
     };
   }
 }

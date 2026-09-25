@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class StockMovement extends Model
 {
-    public const TYPES = ['initial', 'sale', 'sale_cancel', 'purchase', 'purchase_cancel', 'adjustment'];
+    public const TYPES = ['initial', 'sale', 'sale_cancel', 'return', 'purchase', 'purchase_cancel', 'adjustment'];
 
     protected $fillable = [
         'product_id',

@@ -3,8 +3,8 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, map } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
-  Category, Client, DashboardData, InvoiceFormat, Paginated, Product, Purchase, Role, Sale, SalesSummary,
-  Settings, StockMovement, Supplier, User,
+  Backup, CashClosing, CashSummary, Category, Client, ClientStats, DashboardData, InvoiceFormat, Paginated, Product, Purchase,
+  Quote, Report, Role, Sale, SaleReturn, SalesSummary, Settings, StockMovement, Supplier, User,
 } from '../models';
 
 type Query = Record<string, string | number | boolean | null | undefined>;
@@ -122,8 +122,8 @@ export class ApiService {
     return this.http.get<Client[]>(`${this.url}/clients/all`);
   }
 
-  getClient(id: number): Observable<{ client: Client; sales: Sale[]; stats: { sales_count: number; total_spent: number; balance_due: number } }> {
-    return this.http.get<{ client: Client; sales: Sale[]; stats: { sales_count: number; total_spent: number; balance_due: number } }>(`${this.url}/clients/${id}`);
+  getClient(id: number): Observable<{ client: Client; sales: Sale[]; stats: ClientStats }> {
+    return this.http.get<{ client: Client; sales: Sale[]; stats: ClientStats }>(`${this.url}/clients/${id}`);
   }
 
   saveClient(data: Partial<Client>, id?: number): Observable<{ client: Client; message: string }> {
@@ -161,6 +161,18 @@ export class ApiService {
     return this.http.post<{ sale: Sale }>(`${this.url}/sales/${id}/payments`, data).pipe(map(r => r.sale));
   }
 
+  deletePayment(saleId: number, paymentId: number): Observable<{ sale: Sale; message: string }> {
+    return this.http.delete<{ sale: Sale; message: string }>(`${this.url}/sales/${saleId}/payments/${paymentId}`);
+  }
+
+  createReturn(saleId: number, data: { items: { sale_item_id: number; quantity: number }[]; reason?: string; refund_method?: string }): Observable<{ sale: Sale; return: SaleReturn; message: string }> {
+    return this.http.post<{ sale: Sale; return: SaleReturn; message: string }>(`${this.url}/sales/${saleId}/returns`, data);
+  }
+
+  downloadReturnPdf(saleId: number, returnId: number): Observable<Blob> {
+    return this.http.get(`${this.url}/sales/${saleId}/returns/${returnId}/pdf`, { responseType: 'blob' });
+  }
+
   deleteSale(id: number): Observable<{ message: string }> {
     return this.http.delete<{ message: string }>(`${this.url}/sales/${id}`);
   }
@@ -189,6 +201,72 @@ export class ApiService {
 
   deletePurchase(id: number): Observable<{ message: string }> {
     return this.http.delete<{ message: string }>(`${this.url}/purchases/${id}`);
+  }
+
+  // Quotes
+  getQuotes(query: Query = {}): Observable<Paginated<Quote>> {
+    return this.http.get<Paginated<Quote>>(`${this.url}/quotes`, { params: toParams(query) });
+  }
+
+  getQuote(id: number): Observable<Quote> {
+    return this.http.get<{ quote: Quote }>(`${this.url}/quotes/${id}`).pipe(map(r => r.quote));
+  }
+
+  saveQuote(data: unknown, id?: number): Observable<{ quote: Quote; message: string }> {
+    return id
+      ? this.http.put<{ quote: Quote; message: string }>(`${this.url}/quotes/${id}`, data)
+      : this.http.post<{ quote: Quote; message: string }>(`${this.url}/quotes`, data);
+  }
+
+  setQuoteStatus(id: number, status: string): Observable<{ quote: Quote; message: string }> {
+    return this.http.put<{ quote: Quote; message: string }>(`${this.url}/quotes/${id}`, { status });
+  }
+
+  convertQuote(id: number, data: { paid_amount?: number; payment_method?: string }): Observable<{ quote: Quote; sale: Pick<Sale, 'id' | 'invoice_number' | 'total' | 'status'>; message: string }> {
+    return this.http.post<{ quote: Quote; sale: Pick<Sale, 'id' | 'invoice_number' | 'total' | 'status'>; message: string }>(`${this.url}/quotes/${id}/convert`, data);
+  }
+
+  deleteQuote(id: number): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(`${this.url}/quotes/${id}`);
+  }
+
+  downloadQuotePdf(id: number): Observable<Blob> {
+    return this.http.get(`${this.url}/quotes/${id}/pdf`, { responseType: 'blob' });
+  }
+
+  // Cash register closing
+  getCashSummary(date?: string): Observable<CashSummary> {
+    return this.http.get<CashSummary>(`${this.url}/cash-closings/summary`, { params: toParams({ date }) });
+  }
+
+  getCashClosings(query: Query = {}): Observable<Paginated<CashClosing>> {
+    return this.http.get<Paginated<CashClosing>>(`${this.url}/cash-closings`, { params: toParams(query) });
+  }
+
+  closeCash(data: { date?: string; counted_cash: number; notes?: string }): Observable<{ closing: CashClosing; message: string }> {
+    return this.http.post<{ closing: CashClosing; message: string }>(`${this.url}/cash-closings`, data);
+  }
+
+  // Reports
+  getReport(query: Query = {}): Observable<Report> {
+    return this.http.get<Report>(`${this.url}/reports/summary`, { params: toParams(query) });
+  }
+
+  exportReport(query: Query = {}): Observable<Blob> {
+    return this.http.get(`${this.url}/reports/export`, { params: toParams(query), responseType: 'blob' });
+  }
+
+  // Backups
+  getBackups(): Observable<Backup[]> {
+    return this.http.get<Backup[]>(`${this.url}/backups`);
+  }
+
+  createBackup(): Observable<{ name: string; message: string }> {
+    return this.http.post<{ name: string; message: string }>(`${this.url}/backups`, {});
+  }
+
+  downloadBackup(name: string): Observable<Blob> {
+    return this.http.get(`${this.url}/backups/${encodeURIComponent(name)}`, { responseType: 'blob' });
   }
 
   // Users

@@ -1,5 +1,6 @@
 import { Component, ElementRef, HostListener, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged, switchMap, catchError, finalize, of } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { NotifyService } from '../../core/services/notify.service';
@@ -12,6 +13,8 @@ interface CartLine {
   product: Product;
   quantity: number;
   unit_price: number;
+  /** Price typed by the cashier: no longer recomputed automatically */
+  manualPrice?: boolean;
 }
 
 @Component({
@@ -92,16 +95,25 @@ interface CartLine {
         <div class="cart-client">
           <label class="label" for="client">Client</label>
           <div class="row">
-            <select id="client" class="select grow" [ngModel]="clientId()" (ngModelChange)="clientId.set($event)">
+            <select id="client" class="select grow" [ngModel]="clientId()" (ngModelChange)="setClient($event)">
               <option [ngValue]="null">Client comptoir (anonyme)</option>
               @for (c of clients(); track c.id) {
-                <option [ngValue]="c.id">{{ c.name }}{{ c.phone ? ' · ' + c.phone : '' }}</option>
+                <option [ngValue]="c.id">{{ c.name }}{{ c.type === 'professionnel' ? ' · Pro' : '' }}{{ c.phone ? ' · ' + c.phone : '' }}</option>
               }
             </select>
             <button type="button" class="btn btn-secondary" style="width:40px;padding:0" (click)="openClientModal()" title="Nouveau client" aria-label="Nouveau client">
               <i class="fa-solid fa-user-plus"></i>
             </button>
           </div>
+          @if (client(); as c) {
+            <div class="client-info">
+              @if (c.type === 'professionnel') { <span class="badge badge-info no-dot"><i class="fa-solid fa-helmet-safety"></i> Tarif pro</span> }
+              @if ((c.balance_due ?? 0) > 0) { <span class="badge badge-warning no-dot">Doit {{ c.balance_due | money }}</span> }
+              @if (c.credit_limit !== null && c.credit_limit !== undefined) {
+                <span class="xs subtle">Crédit disponible : <strong>{{ availableCredit() | money }}</strong></span>
+              }
+            </div>
+          }
         </div>
 
         <div class="cart-lines">
@@ -128,7 +140,8 @@ interface CartLine {
                   <button type="button" (click)="setQty(i, line.quantity + 1)" [disabled]="line.quantity >= line.product.stock" aria-label="Augmenter"><i class="fa-solid fa-plus"></i></button>
                 </div>
                 <span class="xs subtle">×</span>
-                <input class="input input-sm price-input num" type="number" min="0" [ngModel]="line.unit_price" (ngModelChange)="setPrice(i, $event)" aria-label="Prix unitaire">
+                <input class="input input-sm price-input num" type="number" min="0" [ngModel]="line.unit_price" (ngModelChange)="setPrice(i, $event)" aria-label="Prix unitaire"
+                       [class.wholesale]="isWholesale(line)" [attr.title]="isWholesale(line) ? 'Prix de gros appliqué' : null">
                 <span class="num strong line-total">{{ line.quantity * line.unit_price | money }}</span>
               </div>
             </div>
@@ -147,9 +160,14 @@ interface CartLine {
           </div>
           <div class="summary-line total"><span>Total TTC</span><span class="num">{{ total() | money }}</span></div>
 
-          <button type="button" class="btn btn-primary btn-lg btn-block" style="margin-top:14px" [disabled]="cart().length === 0" (click)="openCheckout()">
-            <i class="fa-solid fa-cash-register"></i> Encaisser {{ total() | money }}
-          </button>
+          <div class="foot-actions">
+            <button type="button" class="btn btn-secondary btn-lg" [disabled]="cart().length === 0 || saving()" (click)="saveAsQuote()" title="Enregistrer le panier comme devis">
+              <i class="fa-solid fa-file-signature"></i> Devis
+            </button>
+            <button type="button" class="btn btn-primary btn-lg grow" [disabled]="cart().length === 0" (click)="openCheckout()">
+              <i class="fa-solid fa-cash-register"></i> Encaisser {{ total() | money }}
+            </button>
+          </div>
         </div>
       </aside>
     </div>
@@ -204,6 +222,8 @@ interface CartLine {
               Paiement partiel : <strong>{{ total() - received() | money }}</strong> resteront dus.
               @if (!clientId()) {
                 <div style="margin-top:4px"><strong>Choisissez un client</strong> dans le panier pour une vente à crédit.</div>
+              } @else if (creditExceeded()) {
+                <div style="margin-top:4px"><strong>Plafond de crédit dépassé</strong> : crédit disponible {{ availableCredit() | money }}.</div>
               }
             </div>
           </div>
@@ -217,7 +237,7 @@ interface CartLine {
 
       <ng-container footer>
         <button type="button" class="btn btn-secondary" (click)="checkoutOpen.set(false)">Retour</button>
-        <button type="button" class="btn btn-primary" [disabled]="saving() || (received() < total() && !clientId())" (click)="confirmSale()">
+        <button type="button" class="btn btn-primary" [disabled]="saving() || (received() < total() && (!clientId() || creditExceeded()))" (click)="confirmSale()">
           @if (saving()) { <span class="spinner"></span> } @else { <i class="fa-solid fa-check"></i> }
           Valider la vente
         </button>
@@ -313,6 +333,9 @@ interface CartLine {
     .stepper input:focus { outline: none; }
     .price-input { width: 96px; text-align: right; }
     .line-total { margin-left: auto; font-size: 13.5px; }
+    .price-input.wholesale { border-color: var(--info); color: var(--info-text); font-weight: 600; }
+    .client-info { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+    .foot-actions { display: flex; gap: 8px; margin-top: 14px; }
     .cart-foot { padding: 14px 16px 16px; border-top: 1px solid var(--border); background: var(--surface-2); }
     .align-center { align-items: center; }
 
@@ -342,6 +365,7 @@ interface CartLine {
 export class PosComponent implements OnInit {
   private api = inject(ApiService);
   private notify = inject(NotifyService);
+  private router = inject(Router);
   private searchBox = viewChild<ElementRef<HTMLInputElement>>('searchBox');
   private search$ = new Subject<string>();
 
@@ -370,6 +394,16 @@ export class PosComponent implements OnInit {
 
   clientModal = signal(false);
   newClient = { name: '', phone: '' };
+
+  client = computed(() => this.clients().find(c => c.id === this.clientId()) ?? null);
+  availableCredit = computed(() => {
+    const c = this.client();
+    if (!c || c.credit_limit === null || c.credit_limit === undefined) {
+      return Infinity;
+    }
+    return Math.max(0, Number(c.credit_limit) - (c.balance_due ?? 0));
+  });
+  creditExceeded = computed(() => this.total() - Math.min(this.received(), this.total()) > this.availableCredit());
 
   itemCount = computed(() => this.cart().reduce((n, l) => n + l.quantity, 0));
   subtotal = computed(() => this.cart().reduce((s, l) => s + l.quantity * l.unit_price, 0));
@@ -460,6 +494,33 @@ export class PosComponent implements OnInit {
     return p.stock - this.qtyInCart(p.id);
   }
 
+  /** Wholesale price for professional clients or from the wholesale quantity */
+  priceFor(product: Product, quantity: number): number {
+    const wholesale = product.wholesale_price !== null && product.wholesale_price !== undefined ? Number(product.wholesale_price) : null;
+    if (wholesale !== null) {
+      const pro = this.client()?.type === 'professionnel';
+      const bulk = !!product.wholesale_min_qty && quantity >= product.wholesale_min_qty;
+      if (pro || bulk) {
+        return wholesale;
+      }
+    }
+    return Number(product.selling_price);
+  }
+
+  isWholesale(line: CartLine): boolean {
+    return line.product.wholesale_price !== null && line.product.wholesale_price !== undefined
+      && line.unit_price === Number(line.product.wholesale_price) && line.unit_price !== Number(line.product.selling_price);
+  }
+
+  private reprice(lines: CartLine[]): CartLine[] {
+    return lines.map(l => (l.manualPrice ? l : { ...l, unit_price: this.priceFor(l.product, l.quantity) }));
+  }
+
+  setClient(id: number | null): void {
+    this.clientId.set(id);
+    this.cart.set(this.reprice(this.cart()));
+  }
+
   add(product: Product): void {
     const lines = [...this.cart()];
     const index = lines.findIndex(l => l.product.id === product.id);
@@ -470,9 +531,9 @@ export class PosComponent implements OnInit {
       }
       lines[index] = { ...lines[index], quantity: lines[index].quantity + 1 };
     } else {
-      lines.unshift({ product, quantity: 1, unit_price: Number(product.selling_price) });
+      lines.unshift({ product, quantity: 1, unit_price: 0 });
     }
-    this.cart.set(lines);
+    this.cart.set(this.reprice(lines));
   }
 
   setQty(index: number, value: number | string): void {
@@ -486,12 +547,12 @@ export class PosComponent implements OnInit {
       return;
     }
     lines[index] = { ...line, quantity: Math.min(qty, line.product.stock) };
-    this.cart.set(lines);
+    this.cart.set(this.reprice(lines));
   }
 
   setPrice(index: number, value: number | string): void {
     const lines = [...this.cart()];
-    lines[index] = { ...lines[index], unit_price: Math.max(0, this.toNumber(value)) };
+    lines[index] = { ...lines[index], unit_price: Math.max(0, this.toNumber(value)), manualPrice: true };
     this.cart.set(lines);
   }
 
@@ -537,6 +598,28 @@ export class PosComponent implements OnInit {
       error: err => {
         this.saving.set(false);
         this.notify.error(err, 'La vente n\'a pas pu être enregistrée');
+      },
+    });
+  }
+
+  /** Keep the cart as a quote (no stock movement) and open it */
+  saveAsQuote(): void {
+    this.saving.set(true);
+    this.api.saveQuote({
+      client_id: this.clientId(),
+      client_name: this.clientId() ? null : 'Client comptoir',
+      discount: this.discount(),
+      items: this.cart().map(l => ({ product_id: l.product.id, quantity: l.quantity, unit_price: l.unit_price })),
+    }).subscribe({
+      next: res => {
+        this.saving.set(false);
+        this.notify.success(res.message);
+        this.reset();
+        this.router.navigate(['/quotes'], { queryParams: { open: res.quote.id } });
+      },
+      error: err => {
+        this.saving.set(false);
+        this.notify.error(err);
       },
     });
   }

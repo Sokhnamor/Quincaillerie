@@ -156,6 +156,10 @@
                     <tr><td class="muted">Remise</td><td class="right">- {{ $money($sale->discount) }} {{ $currency }}</td></tr>
                     @endif
                     <tr class="grand"><td>Total TTC</td><td class="right">{{ $money($sale->total) }} {{ $currency }}</td></tr>
+                    @if($sale->returned_amount > 0)
+                    <tr><td class="muted">Avoirs (retours)</td><td class="right">- {{ $money($sale->returned_amount) }} {{ $currency }}</td></tr>
+                    <tr><td class="bold">Net à payer</td><td class="right bold">{{ $money($sale->net_total) }} {{ $currency }}</td></tr>
+                    @endif
                     <tr class="paid"><td>Payé</td><td class="right">{{ $money($sale->paid_amount) }} {{ $currency }}</td></tr>
                     @if($sale->remaining_amount > 0)
                     <tr class="due"><td>Reste à payer</td><td class="right">{{ $money($sale->remaining_amount) }} {{ $currency }}</td></tr>

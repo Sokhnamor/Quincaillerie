@@ -182,7 +182,7 @@ class ProductController extends Controller
     public function forSale(Request $request): JsonResponse
     {
         $query = Product::with('category:id,name')
-            ->select(['id', 'name', 'reference', 'unit', 'selling_price', 'purchase_price', 'stock', 'alert_threshold', 'category_id']);
+            ->select(['id', 'name', 'reference', 'unit', 'selling_price', 'wholesale_price', 'wholesale_min_qty', 'purchase_price', 'stock', 'alert_threshold', 'category_id']);
 
         if (!$request->boolean('include_out_of_stock')) {
             $query->where('stock', '>', 0);
@@ -213,6 +213,8 @@ class ProductController extends Controller
             'supplier_id' => 'nullable|exists:suppliers,id',
             'purchase_price' => "$req|numeric|min:0",
             'selling_price' => "$req|numeric|min:0",
+            'wholesale_price' => 'nullable|numeric|min:0',
+            'wholesale_min_qty' => 'nullable|integer|min:1',
             'alert_threshold' => "$req|integer|min:0",
             'description' => 'nullable|string|max:2000',
         ];

@@ -86,7 +86,7 @@ import { environment } from '../../../../environments/environment';
               <div class="demo-title"><span>Comptes de démonstration</span></div>
               <div class="demo-list">
                 @for (account of demoAccounts; track account.email) {
-                  <button type="button" class="demo-btn" (click)="fill(account.email)" [disabled]="loading()">
+                  <button type="button" class="demo-btn" (click)="fill(account.email, account.password)" [disabled]="loading()">
                     <i class="fa-solid {{ account.icon }}"></i>
                     <span class="stack" style="gap:0; align-items:flex-start">
                       <strong>{{ account.label }}</strong>
@@ -169,16 +169,12 @@ export class LoginComponent {
   year = new Date().getFullYear();
   expired = this.route.snapshot.queryParamMap.has('expired');
 
-  demo = environment.showDemoAccounts;
-  demoAccounts = [
-    { label: 'Administrateur', email: 'admin@quincaillerie.fr', icon: 'fa-user-shield' },
-    { label: 'Gestionnaire', email: 'gestionnaire@quincaillerie.fr', icon: 'fa-user-tie' },
-    { label: 'Caissier', email: 'caissier@quincaillerie.fr', icon: 'fa-cash-register' },
-  ];
+  demoAccounts = environment.demoAccounts;
+  demo = this.demoAccounts.length > 0;
 
-  fill(email: string): void {
+  fill(email: string, password: string): void {
     this.email = email;
-    this.password = 'password123';
+    this.password = password;
     this.submit();
   }
 

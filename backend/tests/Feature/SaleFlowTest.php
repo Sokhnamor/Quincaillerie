@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Category;
+use App\Models\Client;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\Sale;
@@ -114,7 +115,16 @@ class SaleFlowTest extends TestCase
         $this->actingAsRole('caissier');
         $product = $this->product(5);
 
+        $client = Client::create(['name' => 'Moussa']);
+
+        // A credit sale needs a client
+        $this->postJson('/api/sales', [
+            'items' => [['product_id' => $product->id, 'quantity' => 1, 'unit_price' => 10000]],
+            'paid_amount' => 5000,
+        ])->assertStatus(422)->assertJsonValidationErrors('client_id');
+
         $sale = $this->postJson('/api/sales', [
+            'client_id' => $client->id,
             'items' => [['product_id' => $product->id, 'quantity' => 1, 'unit_price' => 10000]],
             'paid_amount' => 5000,
         ])->assertCreated()->json('sale');

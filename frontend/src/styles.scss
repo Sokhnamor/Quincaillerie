@@ -384,7 +384,9 @@ a.kpi:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); 
 
 /* ---------- Modal ---------- */
 .modal-backdrop, .drawer-backdrop { position: fixed; inset: 0; background: rgba(8, 12, 20, 0.55); backdrop-filter: blur(2px); z-index: 90; animation: fade 0.15s ease-out; }
-.modal-wrap { position: fixed; inset: 0; z-index: 91; display: grid; place-items: center; padding: 16px; pointer-events: none; }
+/* Modals sit above drawers so a modal opened from a drawer dims it */
+.modal-backdrop { z-index: 95; }
+.modal-wrap { position: fixed; inset: 0; z-index: 96; display: grid; place-items: center; padding: 16px; pointer-events: none; }
 .modal {
   pointer-events: auto; width: 100%; max-width: 560px; max-height: calc(100vh - 32px); display: flex; flex-direction: column;
   background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-lg); animation: pop 0.18s var(--ease);

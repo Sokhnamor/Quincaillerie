@@ -6,9 +6,10 @@ import { Subject, debounceTime } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { NotifyService } from '../../core/services/notify.service';
-import { Client, Paginated, Sale } from '../../core/models';
+import { Client, ClientStats, ClientType, Paginated, Sale } from '../../core/models';
 import { MoneyPipe } from '../../shared/money.pipe';
-import { SALE_STATUS, initials } from '../../shared/labels';
+import { SALE_STATUS, initials, whatsappUrl } from '../../shared/labels';
+import { formatMoney } from '../../shared/money.pipe';
 import { ModalComponent } from '../../shared/components/modal.component';
 import { DrawerComponent } from '../../shared/components/drawer.component';
 import { PaginationComponent } from '../../shared/components/pagination.component';
@@ -58,7 +59,7 @@ import { PaginationComponent } from '../../shared/components/pagination.componen
                 @for (c of page()?.data; track c.id) {
                   <tr class="clickable" (click)="openDetail(c)">
                     <td>
-                      <div class="row"><span class="avatar avatar-sm">{{ initials(c.name) }}</span><div><div class="cell-main">{{ c.name }}</div><div class="cell-sub">{{ c.city || '—' }}</div></div></div>
+                      <div class="row"><span class="avatar avatar-sm">{{ initials(c.name) }}</span><div><div class="cell-main">{{ c.name }} @if (c.type === 'professionnel') { <span class="badge badge-info no-dot" style="margin-left:4px">Pro</span> }</div><div class="cell-sub">{{ c.city || '—' }}</div></div></div>
                     </td>
                     <td class="hide-sm"><div class="small">{{ c.phone || '—' }}</div><div class="cell-sub">{{ c.email }}</div></td>
                     <td class="text-right num hide-sm">{{ c.sales_count ?? 0 }}</td>
@@ -86,10 +87,22 @@ import { PaginationComponent } from '../../shared/components/pagination.componen
     <app-modal [open]="formOpen()" [title]="editing() ? 'Modifier le client' : 'Nouveau client'" (closed)="formOpen.set(false)">
       <form id="clientForm" class="form-grid" (ngSubmit)="save()">
         <div class="field span-2"><label class="label" for="cl-name">Nom complet <span class="req">*</span></label><input id="cl-name" class="input" name="name" [(ngModel)]="form.name" required></div>
+        <div class="field span-2">
+          <span class="label">Type de client</span>
+          <div class="choices" style="grid-template-columns:repeat(2,1fr)">
+            <button type="button" class="choice" [class.active]="form.type === 'particulier'" (click)="form.type = 'particulier'"><i class="fa-solid fa-user"></i> Particulier</button>
+            <button type="button" class="choice" [class.active]="form.type === 'professionnel'" (click)="form.type = 'professionnel'"><i class="fa-solid fa-helmet-safety"></i> Professionnel (prix de gros)</button>
+          </div>
+        </div>
         <div class="field"><label class="label" for="cl-phone">Téléphone</label><input id="cl-phone" class="input" name="phone" [(ngModel)]="form.phone" placeholder="77 000 00 00"></div>
         <div class="field"><label class="label" for="cl-email">Email</label><input id="cl-email" class="input" type="email" name="email" [(ngModel)]="form.email"></div>
         <div class="field"><label class="label" for="cl-address">Adresse</label><input id="cl-address" class="input" name="address" [(ngModel)]="form.address"></div>
         <div class="field"><label class="label" for="cl-city">Ville</label><input id="cl-city" class="input" name="city" [(ngModel)]="form.city" placeholder="Dakar"></div>
+        <div class="field span-2">
+          <label class="label" for="cl-limit">Plafond de crédit</label>
+          <div class="input-suffix"><input id="cl-limit" class="input num" type="number" min="0" name="credit_limit" [(ngModel)]="form.credit_limit" placeholder="Vide = pas de plafond"><span>FCFA</span></div>
+          <span class="hint">Une vente à crédit est refusée si la dette du client dépasse ce montant. Mettez 0 pour interdire le crédit.</span>
+        </div>
       </form>
       <ng-container footer>
         <button type="button" class="btn btn-secondary" (click)="formOpen.set(false)">Annuler</button>
@@ -104,7 +117,14 @@ import { PaginationComponent } from '../../shared/components/pagination.componen
           <div class="summary-box"><div class="xs subtle">Total</div><div class="strong num" style="font-size:15px">{{ d.stats.total_spent | money }}</div></div>
           <div class="summary-box"><div class="xs subtle">Reste dû</div><div class="strong num" style="font-size:15px" [class.text-danger]="d.stats.balance_due > 0">{{ d.stats.balance_due | money }}</div></div>
         </div>
+        @if (d.stats.credit_limit !== null) {
+          <div>
+            <div class="row-between small"><span class="muted">Crédit utilisé</span><span class="num"><strong>{{ d.stats.balance_due | money }}</strong> / {{ d.stats.credit_limit | money }}</span></div>
+            <div class="progress {{ creditRatio(d.stats) >= 100 ? 'danger' : creditRatio(d.stats) >= 75 ? 'warning' : 'success' }}" style="margin-top:6px"><span [style.width.%]="creditRatio(d.stats)"></span></div>
+          </div>
+        }
         <dl class="dl">
+          <dt>Type</dt><dd>{{ d.client.type === 'professionnel' ? 'Professionnel' : 'Particulier' }}</dd>
           <dt>Email</dt><dd>{{ d.client.email || '—' }}</dd>
           <dt>Adresse</dt><dd>{{ d.client.address || '—' }}</dd>
           <dt>Ville</dt><dd>{{ d.client.city || '—' }}</dd>
@@ -128,6 +148,9 @@ import { PaginationComponent } from '../../shared/components/pagination.componen
       <ng-container footer>
         @if (detail(); as d) {
           @if (d.stats.balance_due > 0) {
+            @if (reminder(d.client, d.stats); as wa) {
+              <a class="btn btn-secondary" [href]="wa" target="_blank" rel="noopener" title="Relancer par WhatsApp"><i class="fa-brands fa-whatsapp"></i> Relancer</a>
+            }
             <a class="btn btn-secondary" routerLink="/sales" [queryParams]="{ status: 'due', search: d.client.name }"><i class="fa-solid fa-hand-holding-dollar"></i> Encaisser</a>
           }
           <button type="button" class="btn btn-primary" (click)="openForm(d.client)"><i class="fa-solid fa-pen"></i> Modifier</button>
@@ -149,8 +172,8 @@ export class ClientsComponent implements OnInit {
   withDebt = signal(false);
   formOpen = signal(false);
   editing = signal<Client | null>(null);
-  detail = signal<{ client: Client; sales: Sale[]; stats: { sales_count: number; total_spent: number; balance_due: number } } | null>(null);
-  form = { name: '', phone: '', email: '', address: '', city: '' };
+  detail = signal<{ client: Client; sales: Sale[]; stats: ClientStats } | null>(null);
+  form: { name: string; type: ClientType; phone: string; email: string; address: string; city: string; credit_limit: number | null } = this.emptyForm();
   search = '';
   search$ = new Subject<void>();
   private currentPage = 1;
@@ -186,17 +209,23 @@ export class ClientsComponent implements OnInit {
 
   openForm(client?: Client): void {
     this.editing.set(client ?? null);
-    this.form = {
-      name: client?.name ?? '', phone: client?.phone ?? '', email: client?.email ?? '',
-      address: client?.address ?? '', city: client?.city ?? '',
-    };
+    this.form = client
+      ? {
+          name: client.name, type: client.type ?? 'particulier', phone: client.phone ?? '', email: client.email ?? '',
+          address: client.address ?? '', city: client.city ?? '',
+          credit_limit: client.credit_limit !== null && client.credit_limit !== undefined ? Number(client.credit_limit) : null,
+        }
+      : this.emptyForm();
     this.formOpen.set(true);
   }
 
   save(): void {
     const f = this.form;
     this.saving.set(true);
-    const payload = { name: f.name.trim(), phone: f.phone || null, email: f.email || null, address: f.address || null, city: f.city || null };
+    const payload = {
+      name: f.name.trim(), type: f.type, phone: f.phone || null, email: f.email || null, address: f.address || null, city: f.city || null,
+      credit_limit: f.credit_limit === null || (f.credit_limit as unknown) === '' ? null : Number(f.credit_limit),
+    };
     const editing = this.editing();
     this.api.saveClient(payload, editing?.id).subscribe({
       next: res => {
@@ -213,6 +242,22 @@ export class ClientsComponent implements OnInit {
         this.notify.error(err);
       },
     });
+  }
+
+  creditRatio(stats: ClientStats): number {
+    if (!stats.credit_limit) {
+      return stats.balance_due > 0 ? 100 : 0;
+    }
+    return Math.min(100, (stats.balance_due / stats.credit_limit) * 100);
+  }
+
+  reminder(client: Client, stats: ClientStats): string | null {
+    return whatsappUrl(client.phone,
+      `Bonjour ${client.name},\n\nSauf erreur de notre part, il reste ${formatMoney(stats.balance_due)} à régler sur vos achats chez nous.\nVous pouvez payer au magasin, par Wave ou Orange Money.\n\nMerci et bonne journée !`);
+  }
+
+  private emptyForm() {
+    return { name: '', type: 'particulier' as ClientType, phone: '', email: '', address: '', city: '', credit_limit: null as number | null };
   }
 
   async remove(client: Client): Promise<void> {
