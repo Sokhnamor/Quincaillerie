@@ -1,173 +1,222 @@
-import { Component, OnInit, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, inject, signal } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ApiService, Supplier, PaginatedResponse } from '../../core/services/api.service';
+import { RouterLink } from '@angular/router';
+import { Subject, debounceTime } from 'rxjs';
+import { ApiService } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
+import { NotifyService } from '../../core/services/notify.service';
+import { Paginated, Product, Purchase, Supplier } from '../../core/models';
+import { MoneyPipe } from '../../shared/money.pipe';
+import { initials } from '../../shared/labels';
+import { ModalComponent } from '../../shared/components/modal.component';
+import { DrawerComponent } from '../../shared/components/drawer.component';
+import { PaginationComponent } from '../../shared/components/pagination.component';
 
 @Component({
   selector: 'app-suppliers',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [FormsModule, RouterLink, DatePipe, MoneyPipe, ModalComponent, DrawerComponent, PaginationComponent],
   template: `
-    <div class="suppliers-page fade-in">
+    <div class="page">
       <div class="page-header">
         <div>
-          <h1>Fournisseurs</h1>
-          <p>Gérez vos fournisseurs</p>
+          <h1 class="page-title">Fournisseurs</h1>
+          <p class="page-subtitle">Vos partenaires d'approvisionnement.</p>
         </div>
-        <button class="btn btn-primary" (click)="openModal()">
-          <i class="fas fa-plus"></i> Nouveau fournisseur
-        </button>
-      </div>
-
-      <!-- Filters -->
-      <div class="card filter-card">
-        <div class="search-box">
-          <i class="fas fa-search"></i>
-          <input type="text" class="form-control" placeholder="Rechercher..."
-            [(ngModel)]="searchQuery" (input)="onSearch()">
-        </div>
+        @if (auth.canManage()) {
+          <div class="page-actions">
+            <button type="button" class="btn btn-primary" (click)="openForm()"><i class="fa-solid fa-plus"></i> Nouveau fournisseur</button>
+          </div>
+        }
       </div>
 
       <div class="card">
-        <div class="card-body">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Nom</th>
-                <th>Téléphone</th>
-                <th>Email</th>
-                <th>Adresse</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let supplier of suppliers()">
-                <td>{{ supplier.name }}</td>
-                <td>{{ supplier.phone }}</td>
-                <td>{{ supplier.email }}</td>
-                <td>{{ supplier.address }}</td>
-                <td>
-                  <div class="action-buttons">
-                    <button class="btn-icon" (click)="editSupplier(supplier)">
-                      <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="btn-icon text-danger" (click)="confirmDelete(supplier)">
-                      <i class="fas fa-trash"></i>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          
-          <div class="pagination">
-            <button *ngFor="let page of getPageNumbers()" [class.active]="page === currentPage()" (click)="goToPage(page)">
-              {{ page }}
-            </button>
+        <div class="toolbar">
+          <div class="input-icon search">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input class="input" type="search" placeholder="Nom, téléphone, ville…" [(ngModel)]="search" (ngModelChange)="search$.next()">
           </div>
         </div>
-      </div>
 
-      <!-- Modal -->
-      <div class="modal-overlay" *ngIf="showModal()" (click)="closeModal()">
-        <div class="modal-content" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>{{ editingSupplier() ? 'Modifier' : 'Nouveau' }} fournisseur</h3>
-            <button class="btn-icon" (click)="closeModal()"><i class="fas fa-times"></i></button>
+        @if (loading() && !page()) {
+          <div class="loading-block"><span class="spinner spinner-lg"></span></div>
+        } @else if (page()?.data?.length === 0) {
+          <div class="empty">
+            <div class="empty-icon"><i class="fa-solid fa-industry"></i></div>
+            <div class="empty-title">Aucun fournisseur</div>
+            @if (auth.canManage()) { <button type="button" class="btn btn-primary" (click)="openForm()"><i class="fa-solid fa-plus"></i> Ajouter un fournisseur</button> }
           </div>
-          <div class="modal-body">
-            <form>
-              <div class="form-group">
-                <label class="form-label">Nom</label>
-                <input type="text" class="form-control" [(ngModel)]="supplierForm.name" name="name" required>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Téléphone</label>
-                <input type="text" class="form-control" [(ngModel)]="supplierForm.phone" name="phone" required>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Email</label>
-                <input type="email" class="form-control" [(ngModel)]="supplierForm.email" name="email" required>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Adresse</label>
-                <textarea class="form-control" [(ngModel)]="supplierForm.address" name="address" rows="3"></textarea>
-              </div>
-            </form>
+        } @else {
+          <div class="table-wrap" [style.opacity]="loading() ? 0.6 : 1">
+            <table class="table">
+              <thead><tr><th>Fournisseur</th><th class="hide-sm">Contact</th><th class="text-right">Produits</th><th class="text-right hide-sm">Total acheté</th><th></th></tr></thead>
+              <tbody>
+                @for (s of page()?.data; track s.id) {
+                  <tr class="clickable" (click)="openDetail(s)">
+                    <td><div class="row"><span class="avatar avatar-sm" style="background:var(--info-soft);color:var(--info-text)">{{ initials(s.name) }}</span><div><div class="cell-main">{{ s.name }}</div><div class="cell-sub">{{ s.city || '—' }}</div></div></div></td>
+                    <td class="hide-sm"><div class="small">{{ s.phone || '—' }}</div><div class="cell-sub">{{ s.email }}</div></td>
+                    <td class="text-right num">{{ s.products_count ?? 0 }}</td>
+                    <td class="text-right num strong hide-sm">{{ s.purchases_sum_total ?? 0 | money }}</td>
+                    <td class="text-right" (click)="$event.stopPropagation()">
+                      @if (auth.canManage()) {
+                        <div class="actions">
+                          <button type="button" class="icon-btn" (click)="openForm(s)" aria-label="Modifier" title="Modifier"><i class="fa-solid fa-pen"></i></button>
+                          <button type="button" class="icon-btn danger" (click)="remove(s)" aria-label="Supprimer" title="Supprimer"><i class="fa-solid fa-trash-can"></i></button>
+                        </div>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
           </div>
-          <div class="modal-footer">
-            <button class="btn btn-secondary" (click)="closeModal()">Annuler</button>
-            <button class="btn btn-primary" (click)="saveSupplier()">Enregistrer</button>
-          </div>
-        </div>
+          <app-pagination [page]="page()?.current_page ?? 1" [lastPage]="page()?.last_page ?? 1" [total]="page()?.total ?? 0"
+                          [from]="page()?.from ?? 0" [to]="page()?.to ?? 0" (pageChange)="load($event)"></app-pagination>
+        }
       </div>
     </div>
+
+    <app-modal [open]="formOpen()" [title]="editing() ? 'Modifier le fournisseur' : 'Nouveau fournisseur'" (closed)="formOpen.set(false)">
+      <form id="supForm" class="form-grid" (ngSubmit)="save()">
+        <div class="field span-2"><label class="label" for="s-name">Raison sociale <span class="req">*</span></label><input id="s-name" class="input" name="name" [(ngModel)]="form.name" required></div>
+        <div class="field"><label class="label" for="s-phone">Téléphone</label><input id="s-phone" class="input" name="phone" [(ngModel)]="form.phone"></div>
+        <div class="field"><label class="label" for="s-email">Email</label><input id="s-email" class="input" type="email" name="email" [(ngModel)]="form.email"></div>
+        <div class="field"><label class="label" for="s-address">Adresse</label><input id="s-address" class="input" name="address" [(ngModel)]="form.address"></div>
+        <div class="field"><label class="label" for="s-city">Ville</label><input id="s-city" class="input" name="city" [(ngModel)]="form.city"></div>
+      </form>
+      <ng-container footer>
+        <button type="button" class="btn btn-secondary" (click)="formOpen.set(false)">Annuler</button>
+        <button type="submit" form="supForm" class="btn btn-primary" [disabled]="saving() || !form.name.trim()">@if (saving()) { <span class="spinner"></span> } Enregistrer</button>
+      </ng-container>
+    </app-modal>
+
+    <app-drawer [open]="!!detail()" [title]="detail()?.supplier?.name ?? ''" [subtitle]="detail()?.supplier?.phone ?? ''" (closed)="detail.set(null)">
+      @if (detail(); as d) {
+        <dl class="dl">
+          <dt>Email</dt><dd>{{ d.supplier.email || '—' }}</dd>
+          <dt>Adresse</dt><dd>{{ d.supplier.address || '—' }} {{ d.supplier.city }}</dd>
+          <dt>Total acheté</dt><dd class="num">{{ d.supplier.purchases_sum_total ?? 0 | money }}</dd>
+        </dl>
+        <div>
+          <div class="section-title">Produits fournis ({{ d.products.length }})</div>
+          @if (d.products.length === 0) { <p class="muted small">Aucun produit rattaché.</p> }
+          <table class="table table-compact">
+            <tbody>
+              @for (p of d.products; track p.id) {
+                <tr>
+                  <td><div class="strong small">{{ p.name }}</div><div class="cell-sub mono">{{ p.reference }}</div></td>
+                  <td class="text-right num small" [class.text-danger]="p.stock <= p.alert_threshold">{{ p.stock }} en stock</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        @if (d.purchases.length) {
+          <div>
+            <div class="section-title">Derniers approvisionnements</div>
+            <table class="table table-compact">
+              <tbody>
+                @for (pu of d.purchases; track pu.id) {
+                  <tr><td class="mono small strong">{{ pu.invoice_number }}</td><td class="small muted">{{ pu.created_at | date: 'dd/MM/yyyy' }}</td><td class="text-right num small strong">{{ pu.total | money }}</td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      }
+      <ng-container footer>
+        @if (auth.canManage() && detail()) {
+          <a class="btn btn-secondary" routerLink="/purchases" [queryParams]="{ new: 1, supplier: detail()!.supplier.id }"><i class="fa-solid fa-truck-ramp-box"></i> Commander</a>
+          <button type="button" class="btn btn-primary" (click)="openForm(detail()!.supplier)"><i class="fa-solid fa-pen"></i> Modifier</button>
+        }
+      </ng-container>
+    </app-drawer>
   `,
-  styles: [`
-    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-    .page-header h1 { font-size: 1.75rem; font-weight: 700; color: var(--text-primary); }
-    .page-header p { color: var(--text-secondary); font-size: 0.875rem; }
-    .filter-card { margin-bottom: 1.5rem; padding: 1rem; }
-    .action-buttons { display: flex; gap: 0.5rem; }
-    .text-danger { color: #ef4444; }
-  `]
 })
 export class SuppliersComponent implements OnInit {
-  suppliers = signal<Supplier[]>([]);
-  showModal = signal(false);
-  editingSupplier = signal<Supplier | null>(null);
-  searchQuery = '';
-  currentPage = signal(1);
-  totalPages = signal(1);
+  private api = inject(ApiService);
+  private notify = inject(NotifyService);
+  auth = inject(AuthService);
 
-  supplierForm: any = { name: '', phone: '', email: '', address: '' };
+  initials = initials;
+  page = signal<Paginated<Supplier> | null>(null);
+  loading = signal(false);
+  saving = signal(false);
+  formOpen = signal(false);
+  editing = signal<Supplier | null>(null);
+  detail = signal<{ supplier: Supplier; products: Product[]; purchases: Purchase[] } | null>(null);
+  form = { name: '', phone: '', email: '', address: '', city: '' };
+  search = '';
+  search$ = new Subject<void>();
+  private currentPage = 1;
 
-  constructor(private api: ApiService) {}
+  ngOnInit(): void {
+    this.search$.pipe(debounceTime(300)).subscribe(() => this.load(1));
+    this.load(1);
+  }
 
-  ngOnInit(): void { this.loadSuppliers(); }
-
-  loadSuppliers(): void {
-    this.api.getSuppliers().subscribe({
-      next: (data: Supplier[]) => {
-        this.suppliers.set(data);
-      }
+  load(page: number): void {
+    this.currentPage = page;
+    this.loading.set(true);
+    this.api.getSuppliers({ page, search: this.search }).subscribe({
+      next: res => {
+        this.page.set(res);
+        this.loading.set(false);
+      },
+      error: err => {
+        this.loading.set(false);
+        this.notify.error(err);
+      },
     });
   }
 
-  onSearch(): void { this.currentPage.set(1); this.loadSuppliers(); }
-  goToPage(page: number): void { this.currentPage.set(page); this.loadSuppliers(); }
-
-  getPageNumbers(): number[] {
-    const pages: number[] = [];
-    for (let i = 1; i <= this.totalPages(); i++) pages.push(i);
-    return pages;
+  openDetail(supplier: Supplier): void {
+    this.api.getSupplierDetail(supplier.id).subscribe({ next: d => this.detail.set(d), error: err => this.notify.error(err) });
   }
 
-  openModal(): void {
-    this.editingSupplier.set(null);
-    this.supplierForm = { name: '', phone: '', email: '', address: '' };
-    this.showModal.set(true);
+  openForm(supplier?: Supplier): void {
+    this.editing.set(supplier ?? null);
+    this.form = {
+      name: supplier?.name ?? '', phone: supplier?.phone ?? '', email: supplier?.email ?? '',
+      address: supplier?.address ?? '', city: supplier?.city ?? '',
+    };
+    this.formOpen.set(true);
   }
 
-  editSupplier(supplier: Supplier): void {
-    this.editingSupplier.set(supplier);
-    this.supplierForm = { ...supplier };
-    this.showModal.set(true);
+  save(): void {
+    const f = this.form;
+    this.saving.set(true);
+    const payload = { name: f.name.trim(), phone: f.phone || null, email: f.email || null, address: f.address || null, city: f.city || null };
+    const editing = this.editing();
+    this.api.saveSupplier(payload, editing?.id).subscribe({
+      next: res => {
+        this.saving.set(false);
+        this.formOpen.set(false);
+        this.notify.success(res.message);
+        this.load(editing ? this.currentPage : 1);
+        if (editing && this.detail()?.supplier.id === editing.id) {
+          this.openDetail(res.supplier);
+        }
+      },
+      error: err => {
+        this.saving.set(false);
+        this.notify.error(err);
+      },
+    });
   }
 
-  closeModal(): void { this.showModal.set(false); this.editingSupplier.set(null); }
-
-  saveSupplier(): void {
-    if (this.editingSupplier()) {
-      this.api.updateSupplier(this.editingSupplier()!.id, this.supplierForm).subscribe({ next: () => { this.loadSuppliers(); this.closeModal(); } });
-    } else {
-      this.api.createSupplier(this.supplierForm).subscribe({ next: () => { this.loadSuppliers(); this.closeModal(); } });
+  async remove(supplier: Supplier): Promise<void> {
+    const ok = await this.notify.confirm({ title: `Supprimer ${supplier.name} ?`, text: 'Un fournisseur ayant des produits ou des achats ne peut pas être supprimé.', confirmText: 'Supprimer', danger: true });
+    if (!ok) {
+      return;
     }
-  }
-
-  confirmDelete(supplier: Supplier): void {
-    if (confirm(`Êtes-vous sûr de vouloir supprimer "${supplier.name}"?`)) {
-      this.api.deleteSupplier(supplier.id).subscribe({ next: () => this.loadSuppliers() });
-    }
+    this.api.deleteSupplier(supplier.id).subscribe({
+      next: res => {
+        this.notify.success(res.message);
+        this.load(this.currentPage);
+      },
+      error: err => this.notify.error(err),
+    });
   }
 }

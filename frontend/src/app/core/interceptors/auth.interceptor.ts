@@ -1,20 +1,31 @@
-import { HttpInterceptorFn, HttpRequest, HttpEventType, HttpHandlerFn } from '@angular/common/http';
+import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
+import { Router } from '@angular/router';
+import { catchError, throwError } from 'rxjs';
 import { AuthService } from '../services/auth.service';
-import { Observable } from 'rxjs';
 
-export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, next: HttpHandlerFn): Observable<any> => {
-  const authService = inject(AuthService);
-  const token = authService.getToken();
+/**
+ * Adds the bearer token and sends the user back to the login page when the session expires
+ */
+export const authInterceptor: HttpInterceptorFn = (req, next) => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+  const token = auth.getToken();
 
-  if (token) {
-    const cloned = req.clone({
-      setHeaders: {
-        Authorization: `Bearer ${token}`
+  const request = req.clone({
+    setHeaders: {
+      Accept: 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  return next(request).pipe(
+    catchError((error: HttpErrorResponse) => {
+      if (error.status === 401 && !req.url.endsWith('/login')) {
+        auth.clearSession();
+        router.navigate(['/login'], { queryParams: { expired: 1, returnUrl: router.url } });
       }
-    });
-    return next(cloned);
-  }
-
-  return next(req);
+      return throwError(() => error);
+    })
+  );
 };

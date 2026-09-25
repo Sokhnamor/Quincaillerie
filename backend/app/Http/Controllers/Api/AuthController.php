@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -20,50 +20,32 @@ class AuthController extends Controller
         $request->validate([
             'email' => 'required|email',
             'password' => 'required|string',
+            'remember' => 'sometimes|boolean',
         ]);
 
         $user = User::where('email', $request->email)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
-                'email' => ['Les identifiants sont incorrects.'],
+                'email' => ['Email ou mot de passe incorrect.'],
             ]);
         }
 
-        $token = $user->createToken('auth-token')->plainTextToken;
+        if (!$user->is_active) {
+            throw ValidationException::withMessages([
+                'email' => ['Ce compte est désactivé. Contactez un administrateur.'],
+            ]);
+        }
+
+        $expiresAt = $request->boolean('remember') ? now()->addDays(30) : now()->addHours(12);
+        $token = $user->createToken('auth-token', ['*'], $expiresAt)->plainTextToken;
 
         return response()->json([
             'user' => $user->load('role'),
             'token' => $token,
+            'expires_at' => $expiresAt,
             'message' => 'Connexion réussie'
         ]);
-    }
-
-    /**
-     * Register new user
-     */
-    public function register(Request $request): JsonResponse
-    {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
-            'password' => 'required|string|min:8|confirmed',
-        ]);
-
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'role_id' => 3, // Default role: caissier
-        ]);
-
-        $token = $user->createToken('auth-token')->plainTextToken;
-
-        return response()->json([
-            'user' => $user->load('role'),
-            'token' => $token,
-            'message' => 'Inscription réussie'
-        ], 201);
     }
 
     /**
@@ -85,6 +67,41 @@ class AuthController extends Controller
     {
         return response()->json([
             'user' => $request->user()->load('role')
+        ]);
+    }
+
+    /**
+     * Update own profile (and optionally password)
+     */
+    public function updateProfile(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
+            'phone' => 'nullable|string|max:30',
+            'address' => 'nullable|string|max:255',
+            'current_password' => 'required_with:password|nullable|string',
+            'password' => 'nullable|string|min:8|confirmed',
+        ], [
+            'current_password.required_with' => 'Saisissez votre mot de passe actuel pour le changer.',
+        ]);
+
+        if (!empty($validated['password'])) {
+            if (!Hash::check($validated['current_password'] ?? '', $user->password)) {
+                throw ValidationException::withMessages([
+                    'current_password' => ['Le mot de passe actuel est incorrect.'],
+                ]);
+            }
+            $user->password = $validated['password'];
+        }
+
+        $user->fill(collect($validated)->only(['name', 'email', 'phone', 'address'])->all())->save();
+
+        return response()->json([
+            'user' => $user->load('role'),
+            'message' => 'Profil mis à jour'
         ]);
     }
 }

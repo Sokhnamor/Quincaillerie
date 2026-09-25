@@ -18,6 +18,7 @@ class User extends Authenticatable
         'email',
         'password',
         'role_id',
+        'is_active',
         'phone',
         'address',
     ];
@@ -32,6 +33,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_active' => 'boolean',
         ];
     }
 
@@ -58,6 +60,11 @@ class User extends Authenticatable
     public function isManager(): bool
     {
         return $this->role && $this->role->name === 'gestionnaire';
+    }
+
+    public function hasRole(string ...$roles): bool
+    {
+        return $this->role && in_array($this->role->name, $roles, true);
     }
 
     public function isCashier(): bool

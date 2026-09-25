@@ -1,371 +1,410 @@
-import { Component, OnInit, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, inject, signal } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ApiService, Sale, Product, Client, PaginatedResponse, SaleItem } from '../../core/services/api.service';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { Subject, debounceTime } from 'rxjs';
+import { ApiService } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
+import { NotifyService } from '../../core/services/notify.service';
+import { InvoiceFormat, Paginated, PaymentMethod, Sale, SalesSummary } from '../../core/models';
+import { MoneyPipe } from '../../shared/money.pipe';
+import { INVOICE_FORMATS, PAYMENT_LABEL, PAYMENT_METHODS, SALE_STATUS, downloadBlob, printBlob, todayIso } from '../../shared/labels';
+import { DrawerComponent } from '../../shared/components/drawer.component';
+import { PaginationComponent } from '../../shared/components/pagination.component';
+
+type StatusFilter = '' | 'paid' | 'partial' | 'unpaid' | 'due';
 
 @Component({
   selector: 'app-sales',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [FormsModule, RouterLink, DatePipe, MoneyPipe, DrawerComponent, PaginationComponent],
   template: `
-    <div class="sales-page fade-in">
+    <div class="page">
       <div class="page-header">
         <div>
-          <h1>Ventes</h1>
-          <p>Gérez les ventes et factures</p>
+          <h1 class="page-title">Ventes</h1>
+          <p class="page-subtitle">Historique des ventes, factures et encaissements.</p>
         </div>
-        <button class="btn btn-primary" (click)="openModal()">
-          <i class="fas fa-plus"></i> Nouvelle vente
-        </button>
-      </div>
-
-      <!-- Filters -->
-      <div class="card filter-card">
-        <div class="filter-row">
-          <div class="search-box">
-            <i class="fas fa-search"></i>
-            <input type="text" class="form-control" placeholder="Rechercher (N° facture, client)..." [(ngModel)]="searchQuery" (input)="onSearch()">
-          </div>
-          <select class="form-control" [(ngModel)]="statusFilter" (change)="onSearch()">
-            <option value="">Tous les statuts</option>
-            <option value="paid">Payé</option>
-            <option value="unpaid">Impayé</option>
-            <option value="partial">Partiel</option>
-          </select>
-          <input type="date" class="form-control" [(ngModel)]="startDate" (change)="onSearch()">
-          <input type="date" class="form-control" [(ngModel)]="endDate" (change)="onSearch()">
-        </div>
-        <div class="export-buttons">
-          <button class="btn btn-secondary" (click)="exportPdf()"><i class="fas fa-file-pdf"></i> PDF</button>
-          <button class="btn btn-secondary" (click)="exportExcel()"><i class="fas fa-file-excel"></i> Excel</button>
+        <div class="page-actions">
+          @if (auth.canManage()) {
+            <button type="button" class="btn btn-secondary" (click)="export('excel')" [disabled]="exporting()"><i class="fa-solid fa-file-excel"></i> Excel</button>
+            <button type="button" class="btn btn-secondary" (click)="export('pdf')" [disabled]="exporting()"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+          }
+          <a routerLink="/pos" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Nouvelle vente</a>
         </div>
       </div>
 
-      <!-- Sales Table -->
+      <div class="kpi-grid">
+        <div class="kpi"><div class="kpi-top"><span class="kpi-label">Ventes</span><span class="kpi-icon"><i class="fa-solid fa-receipt"></i></span></div><div class="kpi-value">{{ summary()?.count ?? '—' }}</div><div class="kpi-meta">selon les filtres</div></div>
+        <div class="kpi"><div class="kpi-top"><span class="kpi-label">Montant total</span><span class="kpi-icon brand"><i class="fa-solid fa-sack-dollar"></i></span></div><div class="kpi-value">{{ summary()?.total | money }}</div><div class="kpi-meta">TTC</div></div>
+        <div class="kpi"><div class="kpi-top"><span class="kpi-label">Encaissé</span><span class="kpi-icon success"><i class="fa-solid fa-wallet"></i></span></div><div class="kpi-value">{{ summary()?.paid | money }}</div><div class="kpi-meta">paiements reçus</div></div>
+        <div class="kpi"><div class="kpi-top"><span class="kpi-label">Reste à encaisser</span><span class="kpi-icon danger"><i class="fa-solid fa-hand-holding-dollar"></i></span></div><div class="kpi-value">{{ summary()?.remaining | money }}</div><div class="kpi-meta">créances</div></div>
+      </div>
+
       <div class="card">
-        <div class="card-body">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>N° Facture</th>
-                <th>Client</th>
-                <th>Total</th>
-                <th>TVA</th>
-                <th>Statut</th>
-                <th>Date</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let sale of sales()">
-                <td>{{ sale.invoice_number }}</td>
-                <td>{{ sale.client?.name || 'Client inconnu' }}</td>
-                <td>{{ sale.total | number:'1.2-2' }} CFA</td>
-                <td>{{ sale.tax_amount | number:'1.2-2' }} CFA</td>
-                <td>
-                  <span class="badge" [class.badge-success]="sale.status === 'paid'" [class.badge-warning]="sale.status === 'partial'" [class.badge-danger]="sale.status === 'unpaid'">
-                    {{ getStatusLabel(sale.status) }}
-                  </span>
-                </td>
-                <td>{{ sale.created_at | date:'dd/MM/yyyy HH:mm' }}</td>
-                <td>
-                  <div class="action-buttons">
-                    <button class="btn-icon" (click)="viewSale(sale)"><i class="fas fa-eye"></i></button>
-                    <button class="btn-icon text-danger" (click)="confirmDelete(sale)"><i class="fas fa-trash"></i></button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <div class="pagination">
-            <button *ngFor="let page of getPageNumbers()" [class.active]="page === currentPage()" (click)="goToPage(page)">{{ page }}</button>
+        <div class="toolbar">
+          <div class="input-icon search">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input class="input" type="search" placeholder="N° de facture ou client…" [(ngModel)]="search" (ngModelChange)="search$.next()">
           </div>
+          <div class="segmented">
+            @for (f of statusFilters; track f.value) {
+              <button type="button" [class.active]="status() === f.value" (click)="setStatus(f.value)">{{ f.label }}</button>
+            }
+          </div>
+          <div class="row">
+            <input class="input" type="date" [(ngModel)]="startDate" (change)="reload()" [max]="endDate || today" aria-label="Date de début">
+            <span class="subtle">→</span>
+            <input class="input" type="date" [(ngModel)]="endDate" (change)="reload()" [min]="startDate" aria-label="Date de fin">
+          </div>
+          @if (hasFilters()) {
+            <button type="button" class="btn btn-ghost btn-sm" (click)="resetFilters()"><i class="fa-solid fa-xmark"></i> Effacer</button>
+          }
         </div>
-      </div>
 
-      <!-- Create/Edit Modal -->
-      <div class="modal-overlay" *ngIf="showModal()" (click)="closeModal()">
-        <div class="modal-content modal-large" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>{{ editingSale() ? 'Modifier' : 'Nouvelle' }} vente</h3>
-            <button class="btn-icon" (click)="closeModal()"><i class="fas fa-times"></i></button>
+        @if (loading() && !page()) {
+          <div class="loading-block"><span class="spinner spinner-lg"></span></div>
+        } @else if (page()?.data?.length === 0) {
+          <div class="empty">
+            <div class="empty-icon"><i class="fa-solid fa-receipt"></i></div>
+            <div class="empty-title">{{ hasFilters() ? 'Aucune vente ne correspond' : 'Aucune vente enregistrée' }}</div>
+            <p class="empty-text">{{ hasFilters() ? 'Modifiez vos filtres pour élargir la recherche.' : 'Les ventes réalisées au point de vente apparaîtront ici.' }}</p>
+            @if (!hasFilters()) { <a routerLink="/pos" class="btn btn-primary"><i class="fa-solid fa-cash-register"></i> Ouvrir le point de vente</a> }
           </div>
-          <div class="modal-body">
-            <div class="sale-form">
-              <div class="form-section">
-                <h4>Informations</h4>
-                <div class="form-group">
-                  <label class="form-label">Client</label>
-                  <select class="form-control" [(ngModel)]="saleForm.client_id">
-                    <option value="">Sélectionner un client</option>
-                    <option *ngFor="let client of clients()" [value]="client.id">{{ client.name }}</option>
-                  </select>
-                </div>
-              </div>
-              
-              <div class="form-section">
-                <h4>Produits</h4>
-                <div class="product-selector">
-                  <select class="form-control" [(ngModel)]="selectedProductId">
-                    <option value="">Sélectionner un produit</option>
-                    <option *ngFor="let product of products()" [value]="product.id">{{ product.name }} ({{ product.selling_price }}CFA)</option>
-                  </select>
-                  <input type="number" class="form-control" [(ngModel)]="selectedQuantity" placeholder="Quantité" min="1">
-                  <button class="btn btn-primary" (click)="addProduct()"><i class="fas fa-plus"></i></button>
-                </div>
-                
-                <table class="table" *ngIf="saleForm.items.length > 0">
-                  <thead>
-                    <tr>
-                      <th>Produit</th>
-                      <th>Prix</th>
-                      <th>Quantité</th>
-                      <th>Total</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr *ngFor="let item of saleForm.items; let i = index">
-                      <td>{{ item.product_name }}</td>
-                      <td>{{ item.unit_price | number:'1.2-2' }} CFA</td>
-                      <td>{{ item.quantity }}</td>
-                      <td>{{ item.subtotal | number:'1.2-2' }} CFA</td>
-                      <td><button class="btn-icon text-danger" (click)="removeProduct(i)"><i class="fas fa-times"></i></button></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              
-              <div class="totals-section">
-                <div class="total-row"><span>Sous-total:</span><span>{{ calculateSubtotal() | number:'1.2-2' }} CFA</span></div>
-                <div class="total-row"><span>TVA (18%):</span><span>{{ calculateTax() | number:'1.2-2' }} CFA</span></div>
-                <div class="total-row total-final"><span>Total:</span><span>{{ calculateTotal() | number:'1.2-2' }} CFA</span></div>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="btn btn-secondary" (click)="closeModal()">Annuler</button>
-            <button class="btn btn-primary" (click)="saveSale()">Enregistrer</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- View Sale Drawer -->
-      <div class="drawer-overlay" *ngIf="showDrawer()" (click)="closeDrawer()">
-        <div class="drawer" (click)="$event.stopPropagation()">
-          <div class="drawer-header">
-            <h3>Détails de la vente</h3>
-            <button class="btn btn-primary" (click)="downloadInvoice()"><i class="fas fa-file-pdf"></i> PDF</button>
-          </div>
-          <div class="drawer-body" *ngIf="selectedSale()">
-            <div class="sale-details">
-              <div class="detail-row"><span>N° Facture:</span><span>{{ selectedSale()?.invoice_number }}</span></div>
-              <div class="detail-row"><span>Client:</span><span>{{ selectedSale()?.client?.name || 'Client inconnu' }}</span></div>
-              <div class="detail-row"><span>Date:</span><span>{{ selectedSale()?.created_at | date:'dd/MM/yyyy HH:mm' }}</span></div>
-              <div class="detail-row">
-                <span>Statut:</span>
-                <div class="status-edit">
-                  <select class="form-control status-select" [(ngModel)]="selectedSale()!.status" (change)="updateStatus()">
-                    <option value="paid">Payé</option>
-                    <option value="unpaid">Impayé</option>
-                    <option value="partial">Partiel</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-            
-            <h4>Articles</h4>
+        } @else {
+          <div class="table-wrap" [style.opacity]="loading() ? 0.6 : 1">
             <table class="table">
-              <thead><tr><th>Produit</th><th>Prix</th><th>Qté</th><th>Total</th></tr></thead>
-              <tbody>
-                <tr *ngFor="let item of selectedSale()?.items">
-                  <td>{{ item.product_name }}</td>
-                  <td>{{ item.unit_price | number:'1.2-2' }} CFA</td>
-                  <td>{{ item.quantity }}</td>
-                  <td>{{ item.subtotal | number:'1.2-2' }} CFA</td>
+              <thead>
+                <tr>
+                  <th>Facture</th><th>Client</th><th class="hide-sm">Vendeur</th><th class="hide-sm">Date</th>
+                  <th>Statut</th><th class="text-right">Total</th><th class="text-right hide-sm">Reste</th><th></th>
                 </tr>
+              </thead>
+              <tbody>
+                @for (s of page()?.data; track s.id) {
+                  <tr class="clickable" (click)="open(s.id)">
+                    <td><span class="mono strong">{{ s.invoice_number }}</span><div class="cell-sub">{{ s.items_count }} article{{ (s.items_count ?? 0) > 1 ? 's' : '' }}</div></td>
+                    <td>{{ s.client?.name ?? 'Client comptoir' }}</td>
+                    <td class="hide-sm muted">{{ s.user?.name }}</td>
+                    <td class="hide-sm muted">{{ s.created_at | date: 'dd/MM/yyyy HH:mm' }}</td>
+                    <td><span class="badge {{ statusMap[s.status].badge }}">{{ statusMap[s.status].label }}</span></td>
+                    <td class="text-right num strong">{{ s.total | money }}</td>
+                    <td class="text-right num hide-sm" [class.text-danger]="s.remaining_amount > 0" [class.subtle]="s.remaining_amount <= 0">{{ s.remaining_amount | money }}</td>
+                    <td class="text-right" (click)="$event.stopPropagation()">
+                      <div class="actions">
+                        <button type="button" class="icon-btn brand" (click)="print(s)" title="Imprimer la facture" aria-label="Imprimer la facture"><i class="fa-solid fa-print"></i></button>
+                        <button type="button" class="icon-btn" (click)="open(s.id)" title="Détails" aria-label="Détails"><i class="fa-solid fa-chevron-right"></i></button>
+                      </div>
+                    </td>
+                  </tr>
+                }
               </tbody>
             </table>
-            
-            <div class="totals-section">
-              <div class="total-row"><span>Sous-total:</span><span>{{ selectedSale()?.subtotal | number:'1.2-2' }} CFA</span></div>
-              <div class="total-row"><span>TVA:</span><span>{{ selectedSale()?.tax_amount | number:'1.2-2' }} CFA</span></div>
-              <div class="total-row total-final"><span>Total:</span><span>{{ selectedSale()?.total | number:'1.2-2' }} CFA</span></div>
+          </div>
+          <app-pagination [page]="page()?.current_page ?? 1" [lastPage]="page()?.last_page ?? 1" [total]="page()?.total ?? 0"
+                          [from]="page()?.from ?? 0" [to]="page()?.to ?? 0" (pageChange)="load($event)"></app-pagination>
+        }
+      </div>
+    </div>
+
+    <!-- Detail drawer -->
+    <app-drawer [open]="!!selected()" [title]="selected()?.invoice_number ?? ''" [subtitle]="(selected()?.created_at | date: 'EEEE d MMMM y à HH:mm') ?? ''" (closed)="close()">
+      @if (selected(); as s) {
+        <div class="row-between">
+          <span class="badge {{ statusMap[s.status].badge }}">{{ statusMap[s.status].label }}</span>
+          <span class="small muted">Vendeur : <strong>{{ s.user?.name }}</strong></span>
+        </div>
+
+        <div class="summary-box">
+          <div class="row">
+            <span class="avatar">{{ (s.client?.name ?? 'C').charAt(0) }}</span>
+            <div class="grow">
+              <div class="strong">{{ s.client?.name ?? 'Client comptoir' }}</div>
+              <div class="xs subtle">{{ s.client?.phone ?? 'Aucun contact' }}</div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+
+        <div>
+          <div class="section-title">Articles</div>
+          <table class="table table-compact">
+            <thead><tr><th>Produit</th><th class="text-right">Qté</th><th class="text-right">P.U.</th><th class="text-right">Montant</th></tr></thead>
+            <tbody>
+              @for (item of s.items; track item.id) {
+                <tr>
+                  <td><div class="strong small">{{ item.product_name }}</div><div class="cell-sub mono">{{ item.product?.reference }}</div></td>
+                  <td class="text-right num">{{ item.quantity }}</td>
+                  <td class="text-right num">{{ item.unit_price | money: '' }}</td>
+                  <td class="text-right num strong">{{ item.subtotal | money: '' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <div class="summary-box">
+          <div class="summary-line"><span class="muted">Sous-total HT</span><span class="num">{{ s.subtotal | money }}</span></div>
+          <div class="summary-line"><span class="muted">TVA ({{ +s.tax_rate }} %)</span><span class="num">{{ s.tax_amount | money }}</span></div>
+          @if (+s.discount > 0) {
+            <div class="summary-line"><span class="muted">Remise</span><span class="num">− {{ s.discount | money }}</span></div>
+          }
+          <div class="summary-line total"><span>Total TTC</span><span class="num">{{ s.total | money }}</span></div>
+          <div class="summary-line"><span class="text-success strong">Payé</span><span class="num text-success strong">{{ s.paid_amount | money }}</span></div>
+          @if (s.remaining_amount > 0) {
+            <div class="summary-line"><span class="text-danger strong">Reste à payer</span><span class="num text-danger strong">{{ s.remaining_amount | money }}</span></div>
+          }
+        </div>
+
+        @if (s.remaining_amount > 0) {
+          <div class="card" style="box-shadow:none">
+            <div class="card-body stack" style="gap:12px">
+              <div class="section-title" style="margin:0">Enregistrer un paiement</div>
+              <div class="choices">
+                @for (m of methods; track m.value) {
+                  <button type="button" class="choice" [class.active]="payMethod === m.value" (click)="payMethod = m.value"><i class="fa-solid {{ m.icon }}"></i> {{ m.label }}</button>
+                }
+              </div>
+              <div class="row">
+                <div class="input-suffix grow">
+                  <input class="input num" type="number" min="1" [max]="s.remaining_amount" [(ngModel)]="payAmount" aria-label="Montant">
+                  <span>FCFA</span>
+                </div>
+                <button type="button" class="btn btn-secondary" (click)="payAmount = s.remaining_amount">Solde</button>
+              </div>
+              <button type="button" class="btn btn-success" [disabled]="paying() || !payAmount || payAmount <= 0" (click)="addPayment(s)">
+                @if (paying()) { <span class="spinner"></span> } @else { <i class="fa-solid fa-check"></i> } Encaisser {{ payAmount | money }}
+              </button>
+            </div>
+          </div>
+        }
+
+        @if (s.payments?.length) {
+          <div>
+            <div class="section-title">Paiements reçus</div>
+            <div class="timeline">
+              @for (p of s.payments; track p.id) {
+                <div class="timeline-item">
+                  <span class="timeline-dot in"><i class="fa-solid fa-arrow-down"></i></span>
+                  <div class="grow">
+                    <div class="row-between"><strong class="small">{{ paymentLabel[p.method] }}</strong><strong class="num small text-success">{{ p.amount | money }}</strong></div>
+                    <div class="xs subtle">{{ p.created_at | date: 'dd/MM/yyyy HH:mm' }} · {{ p.user?.name }}</div>
+                    @if (p.note) { <div class="xs muted">{{ p.note }}</div> }
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        @if (s.notes) {
+          <div class="alert alert-info"><i class="fa-regular fa-note-sticky"></i> {{ s.notes }}</div>
+        }
+      }
+
+      <ng-container footer>
+        @if (auth.canManage()) {
+          <button type="button" class="btn btn-soft-danger" (click)="cancelSale()"><i class="fa-solid fa-ban"></i> Annuler la vente</button>
+        }
+        <span class="grow"></span>
+        <div class="menu-anchor">
+          <button type="button" class="btn btn-secondary" (click)="formatMenu.set(!formatMenu())"><i class="fa-solid fa-download"></i> PDF <i class="fa-solid fa-chevron-up xs"></i></button>
+          @if (formatMenu()) {
+            <div class="format-menu">
+              @for (fmt of formats; track fmt.value) {
+                <button type="button" (click)="selected() && download(selected()!, fmt.value)"><i class="fa-solid {{ fmt.icon }}"></i> {{ fmt.label }}</button>
+              }
+            </div>
+          }
+        </div>
+        <button type="button" class="btn btn-primary" (click)="selected() && print(selected()!)"><i class="fa-solid fa-print"></i> Imprimer</button>
+      </ng-container>
+    </app-drawer>
   `,
   styles: [`
-    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-    .page-header h1 { font-size: 1.75rem; font-weight: 700; color: var(--text-primary); }
-    .page-header p { color: var(--text-secondary); font-size: 0.875rem; }
-    .filter-card { margin-bottom: 1.5rem; padding: 1rem; }
-    .filter-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
-    .filter-row .search-box { flex: 1; min-width: 200px; }
-    .export-buttons { display: flex; gap: 0.5rem; }
-    .action-buttons { display: flex; gap: 0.5rem; }
-    .text-danger { color: #ef4444; }
-    .modal-large { max-width: 700px; max-height: 90vh; overflow-y: auto; }
-    .sale-form { display: flex; flex-direction: column; gap: 1.5rem; }
-    .form-section h4 { margin-bottom: 1rem; color: var(--text-primary); }
-    .product-selector { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
-    .product-selector select { flex: 2; }
-    .product-selector input { flex: 1; }
-    .totals-section { background: var(--light-color); padding: 1rem; border-radius: 8px; }
-    .total-row { display: flex; justify-content: space-between; padding: 0.5rem 0; }
-    .total-final { font-weight: 700; font-size: 1.125rem; border-top: 1px solid var(--border-color); margin-top: 0.5rem; padding-top: 0.5rem; }
-    .drawer-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 100; display: flex; justify-content: flex-end; }
-    .drawer { background: white; width: 100%; max-width: 500px; height: 100%; overflow-y: auto; animation: slideIn 0.3s ease-out; }
-    .drawer-header { padding: 1.5rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
-    .drawer-body { padding: 1.5rem; }
-    .sale-details { margin-bottom: 1.5rem; }
-    .detail-row { display: flex; justify-content: space-between; padding: 0.75rem 0; border-bottom: 1px solid var(--border-color); align-items: center; }
-    .status-edit { display: flex; gap: 0.5rem; }
-    .status-select { padding: 0.375rem 0.75rem; font-size: 0.875rem; min-width: 120px; }
-    @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+    .menu-anchor { position: relative; }
+    .format-menu { position: absolute; bottom: calc(100% + 6px); right: 0; min-width: 170px; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-md); z-index: 5; }
+    .format-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--text); font-size: 13px; cursor: pointer; text-align: left; }
+    .format-menu button:hover { background: var(--surface-3); }
+    .format-menu i { width: 14px; color: var(--text-3); }
   `]
 })
 export class SalesComponent implements OnInit {
-  sales = signal<Sale[]>([]);
-  products = signal<Product[]>([]);
-  clients = signal<Client[]>([]);
-  showModal = signal(false);
-  showDrawer = signal(false);
-  editingSale = signal<Sale | null>(null);
-  selectedSale = signal<Sale | null>(null);
-  searchQuery = '';
-  statusFilter = '';
+  private api = inject(ApiService);
+  private notify = inject(NotifyService);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  auth = inject(AuthService);
+
+  statusMap = SALE_STATUS;
+  methods = PAYMENT_METHODS;
+  paymentLabel = PAYMENT_LABEL;
+  today = todayIso();
+  statusFilters: { value: StatusFilter; label: string }[] = [
+    { value: '', label: 'Toutes' },
+    { value: 'paid', label: 'Payées' },
+    { value: 'partial', label: 'Partielles' },
+    { value: 'unpaid', label: 'Impayées' },
+    { value: 'due', label: 'À encaisser' },
+  ];
+
+  page = signal<Paginated<Sale> | null>(null);
+  summary = signal<SalesSummary | null>(null);
+  loading = signal(false);
+  exporting = signal(false);
+  selected = signal<Sale | null>(null);
+  paying = signal(false);
+  formatMenu = signal(false);
+  formats = INVOICE_FORMATS;
+  status = signal<StatusFilter>('');
+
+  search = '';
   startDate = '';
   endDate = '';
-  currentPage = signal(1);
-  totalPages = signal(1);
-  selectedProductId = '';
-  selectedQuantity = 1;
+  payAmount = 0;
+  payMethod: PaymentMethod = 'cash';
+  search$ = new Subject<void>();
+  private currentPage = 1;
 
-  saleForm: any = { client_id: '', items: [] };
+  ngOnInit(): void {
+    const params = this.route.snapshot.queryParamMap;
+    this.status.set((params.get('status') as StatusFilter) ?? '');
+    this.search = params.get('search') ?? '';
+    this.search$.pipe(debounceTime(300)).subscribe(() => this.reload());
+    this.reload();
 
-  constructor(private api: ApiService) {}
-  ngOnInit(): void { this.loadSales(); this.loadProducts(); this.loadClients(); }
-
-  loadSales(): void {
-    this.api.getSales(this.currentPage(), this.searchQuery, this.statusFilter, this.startDate, this.endDate).subscribe({
-      next: (response: PaginatedResponse<Sale>) => { this.sales.set(response.data); this.totalPages.set(response.last_page); }
-    });
-  }
-
-  loadProducts(): void { this.api.getProducts().subscribe({ next: (r) => this.products.set(r.data) }); }
-  loadClients(): void { this.api.getClients().subscribe({ next: (data) => this.clients.set(data) }); }
-
-  onSearch(): void { this.currentPage.set(1); this.loadSales(); }
-  goToPage(page: number): void { this.currentPage.set(page); this.loadSales(); }
-  getPageNumbers(): number[] { const pages: number[] = []; for (let i = 1; i <= this.totalPages(); i++) pages.push(i); return pages; }
-
-  getStatusLabel(status: string): string { const labels: any = { paid: 'Payé', unpaid: 'Impayé', partial: 'Partiel' }; return labels[status] || status; }
-
-  openModal(): void {
-    this.editingSale.set(null);
-    this.saleForm = { client_id: '', items: [] };
-    this.showModal.set(true);
-  }
-
-  addProduct(): void {
-    if (!this.selectedProductId) return;
-    const product = this.products().find(p => p.id === parseInt(this.selectedProductId));
-    if (!product) return;
-    const item = { product_id: product.id, product_name: product.name, unit_price: product.selling_price, quantity: this.selectedQuantity, subtotal: product.selling_price * this.selectedQuantity };
-    this.saleForm.items.push(item);
-    this.selectedProductId = '';
-    this.selectedQuantity = 1;
-  }
-
-  removeProduct(index: number): void { this.saleForm.items.splice(index, 1); }
-  calculateSubtotal(): number { return this.saleForm.items.reduce((sum: number, item: any) => sum + item.subtotal, 0); }
-  calculateTax(): number { return this.calculateSubtotal() * 0.19; }
-  calculateTotal(): number { return this.calculateSubtotal() + this.calculateTax(); }
-
-  closeModal(): void { this.showModal.set(false); this.editingSale.set(null); }
-
-  saveSale(): void {
-    if (!this.saleForm.client_id) {
-      alert('Veuillez sélectionner un client');
-      return;
-    }
-    if (this.saleForm.items.length === 0) {
-      alert('Veuillez ajouter au moins un produit');
-      return;
-    }
-
-    const data = {
-      client_id: parseInt(this.saleForm.client_id),
-      items: this.saleForm.items.map((item: any) => ({
-        product_id: parseInt(item.product_id),
-        quantity: parseInt(item.quantity),
-        unit_price: parseFloat(item.unit_price)
-      }))
-    };
-    
-    if (this.editingSale()) {
-      this.api.updateSale(this.editingSale()!.id, data).subscribe({ 
-        next: () => { this.loadSales(); this.closeModal(); },
-        error: (err) => { alert(err.error?.message || 'Erreur lors de la mise à jour'); }
-      });
-    } else {
-      this.api.createSale(data).subscribe({ 
-        next: () => { this.loadSales(); this.closeModal(); },
-        error: (err) => { alert(err.error?.message || 'Erreur lors de la création'); }
-      });
+    const openId = Number(params.get('open'));
+    if (openId) {
+      this.open(openId);
     }
   }
 
-  viewSale(sale: Sale): void { 
-    this.api.getSale(sale.id).subscribe({
-      next: (saleDetails) => {
-        this.selectedSale.set(saleDetails);
-        this.showDrawer.set(true);
-      }
-    });
-  }
-  
-  updateStatus(): void {
-    const sale = this.selectedSale();
-    if (!sale) return;
-    
-    this.api.updateSaleStatus(sale.id, sale.status).subscribe({
-      next: () => { this.loadSales(); },
-      error: () => { alert('Erreur lors de la mise à jour du statut'); }
-    });
+  private query() {
+    return { search: this.search, status: this.status(), start_date: this.startDate, end_date: this.endDate };
   }
 
-  closeDrawer(): void { this.showDrawer.set(false); this.selectedSale.set(null); }
-
-  confirmDelete(sale: Sale): void {
-    if (confirm(`Êtes-vous sûr de vouloir supprimer la vente "${sale.invoice_number}"?`)) {
-      this.api.deleteSale(sale.id).subscribe({ next: () => this.loadSales() });
-    }
+  hasFilters(): boolean {
+    return !!(this.search || this.status() || this.startDate || this.endDate);
   }
 
-  exportPdf(): void { this.api.exportSalesPdf().subscribe({ next: (blob) => { const url = window.URL.createObjectURL(blob); window.open(url); } }); }
-  exportExcel(): void { this.api.exportSalesExcel().subscribe({ next: (blob) => { const url = window.URL.createObjectURL(blob); window.open(url); } }); }
+  reload(): void {
+    this.load(1);
+    this.api.getSalesSummary(this.query()).subscribe({ next: s => this.summary.set(s) });
+  }
 
-  downloadInvoice(): void {
-    const sale = this.selectedSale();
-    if (!sale) return;
-    
-    this.api.downloadInvoicePdf(sale.id).subscribe({
-      next: (blob) => {
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `facture-${sale.invoice_number}.pdf`;
-        link.click();
-        window.URL.revokeObjectURL(url);
+  load(page: number): void {
+    this.currentPage = page;
+    this.loading.set(true);
+    this.api.getSales({ ...this.query(), page }).subscribe({
+      next: res => {
+        this.page.set(res);
+        this.loading.set(false);
       },
-      error: (err) => {
-        alert('Erreur lors du téléchargement du PDF');
-        console.error(err);
-      }
+      error: err => {
+        this.loading.set(false);
+        this.notify.error(err, 'Impossible de charger les ventes');
+      },
+    });
+  }
+
+  setStatus(value: StatusFilter): void {
+    this.status.set(value);
+    this.reload();
+  }
+
+  resetFilters(): void {
+    this.search = '';
+    this.startDate = '';
+    this.endDate = '';
+    this.status.set('');
+    this.reload();
+  }
+
+  open(id: number): void {
+    this.api.getSale(id).subscribe({
+      next: sale => {
+        this.selected.set(sale);
+        this.payAmount = sale.remaining_amount;
+        this.payMethod = 'cash';
+      },
+      error: err => this.notify.error(err),
+    });
+  }
+
+  close(): void {
+    this.selected.set(null);
+    if (this.route.snapshot.queryParamMap.has('open')) {
+      this.router.navigate([], { queryParams: { open: null }, queryParamsHandling: 'merge', replaceUrl: true });
+    }
+  }
+
+  addPayment(sale: Sale): void {
+    this.paying.set(true);
+    this.api.addPayment(sale.id, { amount: Number(this.payAmount), method: this.payMethod }).subscribe({
+      next: updated => {
+        this.paying.set(false);
+        this.selected.set(updated);
+        this.payAmount = updated.remaining_amount;
+        this.notify.success(updated.status === 'paid' ? 'Vente soldée' : 'Paiement enregistré');
+        this.load(this.currentPage);
+        this.api.getSalesSummary(this.query()).subscribe({ next: s => this.summary.set(s) });
+      },
+      error: err => {
+        this.paying.set(false);
+        this.notify.error(err);
+      },
+    });
+  }
+
+  async cancelSale(): Promise<void> {
+    const sale = this.selected();
+    if (!sale) {
+      return;
+    }
+    const ok = await this.notify.confirm({
+      title: `Annuler la vente ${sale.invoice_number} ?`,
+      text: 'Les produits seront remis en stock et la vente sera supprimée définitivement.',
+      confirmText: 'Annuler la vente',
+      danger: true,
+    });
+    if (!ok) {
+      return;
+    }
+    this.api.deleteSale(sale.id).subscribe({
+      next: res => {
+        this.notify.success(res.message);
+        this.close();
+        this.reload();
+      },
+      error: err => this.notify.error(err),
+    });
+  }
+
+  download(sale: Sale, format?: InvoiceFormat): void {
+    this.formatMenu.set(false);
+    this.api.downloadInvoicePdf(sale.id, format).subscribe({
+      next: blob => downloadBlob(blob, `facture-${sale.invoice_number}${format ? '-' + format : ''}.pdf`),
+      error: err => this.notify.error(err, 'Téléchargement impossible'),
+    });
+  }
+
+  print(sale: Sale): void {
+    this.api.downloadInvoicePdf(sale.id).subscribe({
+      next: blob => printBlob(blob),
+      error: err => this.notify.error(err, 'Impression impossible'),
+    });
+  }
+
+  export(format: 'pdf' | 'excel'): void {
+    this.exporting.set(true);
+    this.api.exportSales(format, this.query()).subscribe({
+      next: blob => {
+        this.exporting.set(false);
+        downloadBlob(blob, `ventes-${this.today}.${format === 'pdf' ? 'pdf' : 'xlsx'}`);
+      },
+      error: err => {
+        this.exporting.set(false);
+        this.notify.error(err, 'Export impossible');
+      },
     });
   }
 }

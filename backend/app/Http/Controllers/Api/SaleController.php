@@ -2,52 +2,60 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exports\SalesExport;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Sale;
-use App\Models\SaleItem;
+use App\Models\SalePayment;
+use App\Models\Setting;
+use App\Services\StockService;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Maatwebsite\Excel\Facades\Excel;
 
 class SaleController extends Controller
 {
+    private const INVOICE_FORMATS = ['ticket', 'a5', 'a4'];
+
+    public function __construct(private StockService $stock)
+    {
+    }
+
     /**
      * Display a paginated list of sales
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Sale::with(['client', 'user', 'items']);
-
-        // Search by invoice number or client name
-        if ($request->has('search') && $request->search) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('invoice_number', 'like', "%{$search}%")
-                  ->orWhereHas('client', function ($clientQuery) use ($search) {
-                      $clientQuery->where('name', 'like', "%{$search}%");
-                  });
-            });
-        }
-
-        // Filter by status - accept both filter name formats
-        $status = $request->status ?? $request->filter;
-        if ($status) {
-            $query->where('status', $status);
-        }
-
-        // Filter by date range
-        if ($request->has('start_date') && $request->start_date) {
-            $query->whereDate('created_at', '>=', $request->start_date);
-        }
-        if ($request->has('end_date') && $request->end_date) {
-            $query->whereDate('created_at', '<=', $request->end_date);
-        }
-
-        $sales = $query->orderByDesc('created_at')->paginate($request->per_page ?? 15);
+        $sales = $this->filteredQuery($request)
+            ->with(['client:id,name,phone', 'user:id,name'])
+            ->withCount('items')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate(min((int) ($request->per_page ?? 15), 100));
 
         return response()->json($sales);
+    }
+
+    /**
+     * Totals for the current filters (shown above the sales list)
+     */
+    public function summary(Request $request): JsonResponse
+    {
+        $row = $this->filteredQuery($request)
+            ->selectRaw('COUNT(*) as count, COALESCE(SUM(total),0) as total, COALESCE(SUM(paid_amount),0) as paid')
+            ->first();
+
+        return response()->json([
+            'count' => (int) $row->count,
+            'total' => (float) $row->total,
+            'paid' => (float) $row->paid,
+            'remaining' => max(0, (float) $row->total - (float) $row->paid),
+        ]);
     }
 
     /**
@@ -58,96 +66,85 @@ class SaleController extends Controller
         $validated = $request->validate([
             'client_id' => 'nullable|exists:clients,id',
             'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.product_id' => 'required|distinct|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.unit_price' => 'required|numeric|min:0',
             'discount' => 'nullable|numeric|min:0',
-            'notes' => 'nullable|string',
+            'notes' => 'nullable|string|max:1000',
             'paid_amount' => 'nullable|numeric|min:0',
+            'payment_method' => ['nullable', Rule::in(SalePayment::METHODS)],
+        ], [
+            'items.required' => 'Ajoutez au moins un produit à la vente.',
+            'items.*.product_id.distinct' => 'Un même produit ne peut apparaître qu\'une fois dans la vente.',
         ]);
 
-        try {
-            DB::beginTransaction();
+        $sale = DB::transaction(function () use ($validated, $request) {
+            $userId = $request->user()->id;
 
-            // Generate invoice number
-            $invoiceNumber = 'SAL-' . date('Ymd') . '-' . str_pad(Sale::count() + 1, 5, '0', STR_PAD_LEFT);
-
-            // Calculate totals
             $subtotal = 0;
-            $itemsData = [];
-
             foreach ($validated['items'] as $item) {
-                $product = Product::find($item['product_id']);
-                
-                // Check stock
-                if ($product->stock < $item['quantity']) {
-                    return response()->json([
-                        'message' => "Stock insuffisant pour le produit: {$product->name}"
-                    ], 422);
-                }
-
-                $itemSubtotal = $item['quantity'] * $item['unit_price'];
-                $subtotal += $itemSubtotal;
-
-                $itemsData[] = [
-                    'product_id' => $item['product_id'],
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
-                    'subtotal' => $itemSubtotal
-                ];
-
-                // Update stock
-                $product->decrement('stock', $item['quantity']);
+                $subtotal += $item['quantity'] * $item['unit_price'];
             }
 
-            $taxAmount = $subtotal * 0.19; // TVA 19%
-            $discount = $validated['discount'] ?? 0;
-            $total = $subtotal + $taxAmount - $discount;
-            $paidAmount = $validated['paid_amount'] ?? $total;
+            $taxRate = Setting::taxRate();
+            $taxAmount = round($subtotal * $taxRate / 100, 2);
+            $discount = (float) ($validated['discount'] ?? 0);
+            $total = round($subtotal + $taxAmount - $discount, 2);
 
-            // Determine status
-            if ($paidAmount >= $total) {
-                $status = 'paid';
-            } elseif ($paidAmount > 0) {
-                $status = 'partial';
-            } else {
-                $status = 'unpaid';
+            if ($total < 0) {
+                throw ValidationException::withMessages(['discount' => ['La remise ne peut pas dépasser le montant de la vente.']]);
             }
+
+            // Money actually received now; any excess is change given back, not credit
+            $paidAmount = min((float) ($validated['paid_amount'] ?? $total), $total);
 
             $sale = Sale::create([
-                'invoice_number' => $invoiceNumber,
+                // Temporary unique value, replaced by the final number once the id is known
+                'invoice_number' => 'TMP-' . uniqid('', true),
                 'client_id' => $validated['client_id'] ?? null,
-                'user_id' => $request->user()->id,
+                'user_id' => $userId,
                 'subtotal' => $subtotal,
+                'tax_rate' => $taxRate,
                 'tax_amount' => $taxAmount,
                 'discount' => $discount,
                 'total' => $total,
-                'status' => $status,
+                'status' => Sale::statusFor($paidAmount, $total),
                 'paid_amount' => $paidAmount,
                 'notes' => $validated['notes'] ?? null,
             ]);
 
-            // Create sale items
-            foreach ($itemsData as $itemData) {
-                SaleItem::create([
-                    'sale_id' => $sale->id,
-                    ...$itemData
+            $sale->update(['invoice_number' => $this->invoiceNumber($sale)]);
+
+            foreach ($validated['items'] as $item) {
+                $product = Product::findOrFail($item['product_id']);
+
+                // Throws (and rolls back the whole sale) if stock is insufficient
+                $this->stock->move($product, -$item['quantity'], 'sale', $userId, $sale->invoice_number);
+
+                $sale->items()->create([
+                    'product_id' => $product->id,
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                    'subtotal' => $item['quantity'] * $item['unit_price'],
                 ]);
             }
 
-            DB::commit();
+            if ($paidAmount > 0) {
+                $sale->payments()->create([
+                    'user_id' => $userId,
+                    'amount' => $paidAmount,
+                    'method' => $validated['payment_method'] ?? 'cash',
+                    'note' => 'Paiement à la vente',
+                ]);
+            }
 
-            return response()->json([
-                'sale' => $sale->load(['client', 'user', 'items.product']),
-                'message' => 'Vente créée avec succès'
-            ], 201);
+            return $sale;
+        });
 
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'message' => 'Erreur lors de la création de la vente: ' . $e->getMessage()
-            ], 500);
-        }
+        return response()->json([
+            'sale' => $this->loadDetails($sale),
+            'message' => 'Vente enregistrée avec succès'
+        ], 201);
     }
 
     /**
@@ -155,107 +152,185 @@ class SaleController extends Controller
      */
     public function show(Sale $sale): JsonResponse
     {
-        $sale = $sale->load(['client', 'user', 'items.product']);
-        
-        // Add product_name to each item for frontend compatibility
-        $sale->items->each(function ($item) {
-            $item->product_name = $item->product ? $item->product->name : 'Produit supprimé';
-        });
-
         return response()->json([
-            'sale' => $sale
+            'sale' => $this->loadDetails($sale)
         ]);
     }
 
     /**
-     * Update the specified sale
+     * Update client / notes of a sale. Amounts are changed through payments only.
      */
     public function update(Request $request, Sale $sale): JsonResponse
     {
         $validated = $request->validate([
             'client_id' => 'nullable|exists:clients,id',
-            'status' => 'sometimes|in:paid,partial,unpaid',
-            'paid_amount' => 'sometimes|numeric|min:0',
-            'notes' => 'nullable|string',
+            'notes' => 'nullable|string|max:1000',
         ]);
 
         $sale->update($validated);
 
-        // Update status based on paid amount if provided
-        if (isset($validated['paid_amount'])) {
-            if ($validated['paid_amount'] >= $sale->total) {
-                $sale->update(['status' => 'paid']);
-            } elseif ($validated['paid_amount'] > 0) {
-                $sale->update(['status' => 'partial']);
-            } else {
-                $sale->update(['status' => 'unpaid']);
-            }
-        }
-
         return response()->json([
-            'sale' => $sale->load(['client', 'user', 'items.product']),
+            'sale' => $this->loadDetails($sale),
             'message' => 'Vente mise à jour avec succès'
         ]);
     }
 
     /**
-     * Remove the specified sale
+     * Record a new payment (installment) for a sale
      */
-    public function destroy(Sale $sale): JsonResponse
+    public function addPayment(Request $request, Sale $sale): JsonResponse
     {
-        try {
-            DB::beginTransaction();
+        $remaining = $sale->remaining_amount;
 
-            // Restore stock for each item
-            foreach ($sale->items as $item) {
-                $item->product->increment('stock', $item->quantity);
-            }
-
-            // Delete sale items first
-            $sale->items()->delete();
-            
-            // Delete sale
-            $sale->delete();
-
-            DB::commit();
-
-            return response()->json([
-                'message' => 'Vente supprimée avec succès'
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'message' => 'Erreur lors de la suppression: ' . $e->getMessage()
-            ], 500);
+        if ($remaining <= 0) {
+            throw ValidationException::withMessages(['amount' => ['Cette vente est déjà entièrement payée.']]);
         }
+
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'gt:0', 'max:' . $remaining],
+            'method' => ['required', Rule::in(SalePayment::METHODS)],
+            'note' => 'nullable|string|max:255',
+        ], [
+            'amount.max' => 'Le montant ne peut pas dépasser le reste à payer (' . number_format($remaining, 0, ',', ' ') . ').',
+        ]);
+
+        DB::transaction(function () use ($sale, $validated, $request) {
+            $sale->payments()->create([
+                ...$validated,
+                'user_id' => $request->user()->id,
+            ]);
+            $sale->refreshPaymentStatus();
+        });
+
+        return response()->json([
+            'sale' => $this->loadDetails($sale),
+            'message' => 'Paiement enregistré'
+        ]);
     }
 
     /**
-     * Generate PDF invoice for a sale
+     * Cancel a sale: restore stock and delete it
      */
-    public function generatePdf(Sale $sale): \Illuminate\Http\Response
+    public function destroy(Request $request, Sale $sale): JsonResponse
     {
-        $sale = $sale->load(['client', 'user', 'items.product']);
-        
-        // Add product_name to each item
-        $sale->items->each(function ($item) {
-            $item->product_name = $item->product ? $item->product->name : 'Produit supprimé';
+        DB::transaction(function () use ($sale, $request) {
+            foreach ($sale->items()->with('product')->get() as $item) {
+                if ($item->product) {
+                    $this->stock->move(
+                        $item->product,
+                        $item->quantity,
+                        'sale_cancel',
+                        $request->user()->id,
+                        $sale->invoice_number,
+                        'Annulation de la vente'
+                    );
+                }
+            }
+
+            $sale->delete(); // items and payments cascade
         });
 
-        $companyName = config('app.name', 'Mon Entreprise');
-        
-        $pdf = Pdf::loadView('invoices.sale', [
-            'sale' => $sale,
-            'company' => [
-                'name' => $companyName,
-                'address' => 'Cotonou, Benin',
-                'phone' => '+229 00 00 00 00',
-                'email' => 'contact@entreprise.com',
-                'tax_id' => 'N° Contribuable: 0000000000'
-            ]
+        return response()->json([
+            'message' => 'Vente annulée, le stock a été restauré'
         ]);
+    }
 
-        return $pdf->download('facture-' . $sale->invoice_number . '.pdf');
+    /**
+     * Generate the invoice PDF: 80 mm receipt ("ticket"), A5 or A4.
+     * The format comes from ?format=… or the "invoice_format" setting.
+     */
+    public function generatePdf(Request $request, Sale $sale)
+    {
+        $settings = Setting::allValues();
+        $format = in_array($request->format, self::INVOICE_FORMATS, true) ? $request->format : $settings['invoice_format'];
+        $sale = $this->loadDetails($sale);
+
+        if ($format === 'ticket') {
+            // 80 mm wide roll; height grows with the content so the receipt is never cut
+            $width = 80 / 25.4 * 72;
+            $height = 150 / 25.4 * 72 + $sale->items->count() * 26 + $sale->payments->count() * 11 + ($sale->notes ? 30 : 0);
+            $pdf = Pdf::loadView('invoices.ticket', compact('sale', 'settings'))->setPaper([0, 0, $width, $height]);
+        } else {
+            $pdf = Pdf::loadView('invoices.sale', ['sale' => $sale, 'settings' => $settings, 'paper' => $format])->setPaper($format);
+        }
+
+        $filename = ($format === 'ticket' ? 'ticket-' : 'facture-') . $sale->invoice_number . '.pdf';
+
+        return $request->boolean('inline') ? $pdf->stream($filename) : $pdf->download($filename);
+    }
+
+    /**
+     * Export the filtered sales list to Excel
+     */
+    public function exportExcel(Request $request)
+    {
+        $sales = $this->filteredQuery($request)->with(['client', 'user'])->orderByDesc('created_at')->get();
+
+        return Excel::download(new SalesExport($sales), 'ventes-' . now()->format('Y-m-d') . '.xlsx');
+    }
+
+    /**
+     * Export the filtered sales list to PDF
+     */
+    public function exportPdf(Request $request)
+    {
+        $sales = $this->filteredQuery($request)->with(['client', 'user'])->orderByDesc('created_at')->get();
+
+        $pdf = Pdf::loadView('reports.sales', [
+            'sales' => $sales,
+            'settings' => Setting::allValues(),
+            'filters' => $request->only(['start_date', 'end_date', 'status']),
+        ])->setPaper('a4', 'landscape');
+
+        return $pdf->download('ventes-' . now()->format('Y-m-d') . '.pdf');
+    }
+
+    private function filteredQuery(Request $request): Builder
+    {
+        $query = Sale::query();
+
+        if ($search = $request->search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('invoice_number', 'like', "%{$search}%")
+                  ->orWhereHas('client', fn ($c) => $c->where('name', 'like', "%{$search}%"));
+            });
+        }
+
+        $status = $request->status ?? $request->filter;
+        if ($status === 'due') {
+            $query->where('status', '!=', 'paid');
+        } elseif ($status) {
+            $query->where('status', $status);
+        }
+        if ($request->client_id) {
+            $query->where('client_id', $request->client_id);
+        }
+        if ($request->user_id) {
+            $query->where('user_id', $request->user_id);
+        }
+        if ($request->start_date) {
+            $query->whereDate('created_at', '>=', $request->start_date);
+        }
+        if ($request->end_date) {
+            $query->whereDate('created_at', '<=', $request->end_date);
+        }
+
+        return $query;
+    }
+
+    private function loadDetails(Sale $sale): Sale
+    {
+        $sale->load(['client', 'user:id,name', 'items.product:id,name,reference,unit', 'payments.user:id,name']);
+
+        $sale->items->each(function ($item) {
+            $item->product_name = $item->product?->name ?? 'Produit supprimé';
+        });
+
+        return $sale;
+    }
+
+    private function invoiceNumber(Sale $sale): string
+    {
+        return 'FAC-' . $sale->created_at->format('Y') . '-' . str_pad((string) $sale->id, 6, '0', STR_PAD_LEFT);
     }
 }

@@ -1,365 +1,189 @@
+@php
+    // $paper: 'a4' | 'a5' — A5 uses the same layout, scaled down
+    $compact = ($paper ?? 'a4') === 'a5';
+    $px = fn (float $size) => round($compact ? $size * 0.8 : $size, 1) . 'px';
+    $currency = $settings['currency'];
+    $money = fn ($v) => number_format((float) $v, 0, ',', ' ');
+    $statusLabels = ['paid' => 'Payée', 'partial' => 'Paiement partiel', 'unpaid' => 'Impayée'];
+    $methodLabels = ['cash' => 'Espèces', 'wave' => 'Wave', 'orange_money' => 'Orange Money', 'card' => 'Carte', 'transfer' => 'Virement', 'cheque' => 'Chèque'];
+    $taxRate = rtrim(rtrim(number_format((float) $sale->tax_rate, 2, ',', ''), '0'), ',');
+    $inWords = class_exists(\NumberFormatter::class)
+        ? (new \NumberFormatter('fr', \NumberFormatter::SPELLOUT))->format((int) round((float) $sale->total))
+        : null;
+@endphp
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <title>Facture {{ $sale->invoice_number }}</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        @page {
-            size: A4;
-            margin: 15mm;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, sans-serif;
-            font-size: 11px;
-            line-height: 1.5;
-            color: #333;
-        }
-        
-        .invoice-wrapper {
-            width: 100%;
-            max-width: 180mm;
-            margin: 0 auto;
-        }
-        
-        .top-bar {
-            height: 6px;
-            background: #e67e22;
-            margin-bottom: 12px;
-        }
-        
-        .header {
-            display: flex;
-            justify-content: space-between;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #ddd;
-            margin-bottom: 12px;
-        }
-        
-        .company-name {
-            font-size: 18px;
-            font-weight: 700;
-            color: #2c3e50;
-        }
-        
-        .company-details {
-            font-size: 9px;
-            color: #666;
-        }
-        
-        .invoice-title {
-            font-size: 26px;
-            font-weight: 700;
-            color: #e67e22;
-        }
-        
-        .invoice-meta {
-            font-size: 10px;
-            color: #555;
-        }
-        
-        .status-badge {
-            display: inline-block;
-            padding: 3px 10px;
-            border-radius: 3px;
-            font-size: 8px;
-            font-weight: 700;
-            text-transform: uppercase;
-            margin-top: 5px;
-        }
-        
-        .status-paid { background: #27ae60; color: white; }
-        .status-partial { background: #f39c12; color: white; }
-        .status-unpaid { background: #e74c3c; color: white; }
-        
-        .parties {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 12px;
-        }
-        
-        .party-card {
-            flex: 1;
-            background: #f5f5f5;
-            border-radius: 4px;
-            padding: 10px;
-        }
-        
-        .party-title {
-            font-size: 8px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: #e67e22;
-            font-weight: 700;
-            margin-bottom: 6px;
-            padding-bottom: 4px;
-            border-bottom: 1px solid #e67e22;
-        }
-        
-        .party-name {
-            font-size: 12px;
-            font-weight: 700;
-            color: #2c3e50;
-            margin-bottom: 4px;
-        }
-        
-        .party-info {
-            font-size: 9px;
-            color: #555;
-            line-height: 1.5;
-        }
-        
-        .items-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 12px;
-        }
-        
-        .items-table thead {
-            background: #e67e22;
-            color: white;
-        }
-        
-        .items-table th {
-            padding: 8px 6px;
-            text-align: left;
-            font-weight: 600;
-            font-size: 9px;
-            text-transform: uppercase;
-        }
-        
-        .items-table th:nth-child(1) { text-align: center; width: 30px; }
-        .items-table th:nth-child(3) { text-align: right; width: 75px; }
-        .items-table th:nth-child(4) { text-align: center; width: 50px; }
-        .items-table th:nth-child(5) { text-align: right; width: 80px; }
-        
-        .items-table td {
-            padding: 8px 6px;
-            border-bottom: 1px solid #eee;
-            font-size: 10px;
-        }
-        
-        .items-table td:nth-child(1) { text-align: center; }
-        .items-table td:nth-child(3) { text-align: right; }
-        .items-table td:nth-child(4) { text-align: center; }
-        .items-table td:nth-child(5) { text-align: right; font-weight: 600; }
-        
-        .items-table tbody tr:nth-child(even) { background: #fafafa; }
-        
-        .summary-section {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 10px;
-        }
-        
-        .payment-info { flex: 1; }
-        
-        .payment-card {
-            background: #f5f5f5;
-            border-radius: 4px;
-            padding: 10px;
-        }
-        
-        .payment-title {
-            font-size: 9px;
-            text-transform: uppercase;
-            color: #2c3e50;
-            font-weight: 600;
-            margin-bottom: 6px;
-        }
-        
-        .payment-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 4px 0;
-            font-size: 10px;
-            border-bottom: 1px solid #ddd;
-        }
-        
-        .payment-row:last-child { border-bottom: none; }
-        .payment-row.paid { color: #27ae60; font-weight: 600; }
-        .payment-row.remaining { 
-            font-weight: 700; 
-            color: #e67e22; 
-            margin-top: 5px;
-            padding-top: 5px;
-            border-top: 1px solid #e67e22;
-        }
-        
-        .totals-box { width: 160px; }
-        
-        .totals-card {
-            background: #2c3e50;
-            border-radius: 4px;
-            padding: 12px;
-            color: white;
-        }
-        
-        .total-line {
-            display: flex;
-            justify-content: space-between;
-            padding: 5px 0;
-            font-size: 10px;
-        }
-        
-        .total-line.subtotal, .total-line.tax { color: rgba(255,255,255,0.7); }
-        .total-line.discount { color: #2ecc71; }
-        .total-line.grand-total {
-            font-size: 14px;
-            font-weight: 700;
-            margin-top: 6px;
-            padding-top: 8px;
-            border-top: 1px solid #e67e22;
-        }
-        
-        .notes-box {
-            background: #fff8e1;
-            border-left: 3px solid #f39c12;
-            padding: 8px 10px;
-            font-size: 9px;
-            color: #666;
-            margin-bottom: 10px;
-        }
-        
-        .notes-box strong { color: #2c3e50; }
-        
-        .footer {
-            padding-top: 10px;
-            border-top: 2px solid #e67e22;
-            text-align: center;
-        }
-        
-        .footer-thanks {
-            font-size: 11px;
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 3px;
-        }
-        
-        .footer-generated {
-            font-size: 8px;
-            color: #888;
-        }
+        @page { margin: {{ $compact ? '9mm' : '14mm' }}; }
+        * { margin: 0; padding: 0; }
+        body { font-family: 'DejaVu Sans', sans-serif; font-size: {{ $px(9.5) }}; line-height: 1.45; color: #1e293b; }
+        table { width: 100%; border-collapse: collapse; }
+        td { vertical-align: top; }
+        .right { text-align: right; }
+        .center { text-align: center; }
+        .muted { color: #64748b; }
+        .bold { font-weight: bold; }
+
+        .logo { width: {{ $px(46) }}; height: {{ $px(34) }}; padding-top: {{ $px(12) }}; line-height: 1; border-radius: 10px; background: #ea580c; color: #fff; text-align: center; font-size: {{ $px(22) }}; font-weight: bold; }
+        .company { font-size: {{ $px(17) }}; font-weight: bold; color: #0f172a; }
+        .company-info { font-size: {{ $px(8.5) }}; color: #64748b; line-height: 1.5; }
+        .doc-title { font-size: {{ $px(24) }}; font-weight: bold; color: #0f172a; letter-spacing: 2px; text-align: right; }
+        .doc-number { font-size: {{ $px(11) }}; font-weight: bold; color: #ea580c; text-align: right; }
+
+        .band { margin-top: {{ $px(18) }}; border: 1px solid #e2e8f0; border-radius: 8px; }
+        .band td { padding: {{ $px(10) }} {{ $px(12) }}; border-right: 1px solid #e2e8f0; }
+        .band td.last { border-right: 0; }
+        .label { font-size: {{ $px(7.5) }}; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; font-weight: bold; margin-bottom: 3px; }
+        .value { font-size: {{ $px(11) }}; font-weight: bold; color: #0f172a; }
+        .badge { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: {{ $px(8) }}; font-weight: bold; color: #fff; }
+        .badge-paid { background: #16a34a; }
+        .badge-partial { background: #d97706; }
+        .badge-unpaid { background: #dc2626; }
+
+        .items { margin-top: {{ $px(16) }}; }
+        .items th { font-size: {{ $px(7.5) }}; text-transform: uppercase; letter-spacing: .6px; color: #64748b; text-align: left; padding: {{ $px(7) }} {{ $px(6) }}; border-bottom: 2px solid #0f172a; }
+        .items th.right { text-align: right; }
+        .items td { padding: {{ $px(7) }} {{ $px(6) }}; border-bottom: 1px solid #eef0f4; }
+        .items .ref { font-size: {{ $px(7.5) }}; color: #94a3b8; }
+
+        .totals td { padding: {{ $px(4) }} {{ $px(8) }}; }
+        .totals .grand td { background: #0f172a; color: #fff; font-size: {{ $px(12.5) }}; font-weight: bold; padding: {{ $px(9) }} {{ $px(8) }}; }
+        .totals .paid td { color: #16a34a; font-weight: bold; }
+        .totals .due td { color: #dc2626; font-weight: bold; }
+        .section-title { font-size: {{ $px(7.5) }}; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; font-weight: bold; margin-bottom: 5px; }
+        .payments td { padding: 3px 0; border-bottom: 1px dashed #e2e8f0; font-size: {{ $px(8.5) }}; }
+        .words { margin-top: {{ $px(12) }}; font-size: {{ $px(8.5) }}; color: #334155; }
+        .notes { margin-top: {{ $px(12) }}; background: #fff7ed; border-left: 3px solid #ea580c; padding: {{ $px(7) }} {{ $px(10) }}; font-size: {{ $px(8.5) }}; }
+        .sign { margin-top: {{ $px(22) }}; }
+        .sign td { width: 50%; font-size: {{ $px(8) }}; color: #64748b; }
+        .sign .box { height: {{ $px(42) }}; border-bottom: 1px solid #cbd5e1; margin-right: 24px; }
+        .footer { margin-top: {{ $px(22) }}; text-align: center; font-size: {{ $px(7.5) }}; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 5px; }
     </style>
 </head>
 <body>
-    <div class="invoice-wrapper">
-        <div class="top-bar"></div>
-        
-        <div class="header">
-            <div>
-                <div class="company-name">{{ $company['name'] }}</div>
-                <div class="company-details">{{ $company['address'] }} | {{ $company['phone'] }} | {{ $company['email'] }}</div>
-            </div>
-            <div style="text-align: right;">
-                <div class="invoice-title">FACTURE</div>
-                <div class="invoice-meta">
-                    <strong>N°:</strong> {{ $sale->invoice_number }} | <strong>Date:</strong> {{ \Carbon\Carbon::parse($sale->created_at)->format('d/m/Y') }}
+
+    {{-- En-tête --}}
+    <table>
+        <tr>
+            <td style="width: {{ $px(56) }};"><div class="logo">{{ mb_strtoupper(mb_substr($settings['company_name'], 0, 1)) }}</div></td>
+            <td>
+                <div class="company">{{ $settings['company_name'] }}</div>
+                <div class="company-info">
+                    {{ $settings['company_address'] }}<br>
+                    Tél. {{ $settings['company_phone'] }}@if($settings['company_email']) · {{ $settings['company_email'] }}@endif
                 </div>
-                <span class="status-badge status-{{ $sale->status }}">
-                    @if($sale->status === 'paid') PAYÉ
-                    @elseif($sale->status === 'partial') PARTIEL
-                    @else IMPAYÉ
-                    @endif
-                </span>
-            </div>
-        </div>
-        
-        <div class="parties">
-            <div class="party-card">
-                <div class="party-title">Émetteur</div>
-                <div class="party-name">{{ $company['name'] }}</div>
-                <div class="party-info">{{ $company['address'] }}<br>{{ $company['phone'] }}</div>
-            </div>
-            <div class="party-card">
-                <div class="party-title">Client</div>
-                @if($sale->client)
-                    <div class="party-name">{{ $sale->client->name }}</div>
-                    <div class="party-info">@if($sale->client->phone){{ $sale->client->phone }}<br>@endif{{ $sale->client->address ?? '' }}</div>
-                @else
-                    <div class="party-name">Client non spécifié</div>
+            </td>
+            <td style="width: 40%;">
+                <div class="doc-title">FACTURE</div>
+                <div class="doc-number">{{ $sale->invoice_number }}</div>
+            </td>
+        </tr>
+    </table>
+
+    {{-- Bandeau d'informations --}}
+    <table class="band">
+        <tr>
+            <td style="width: 42%;">
+                <div class="label">Facturé à</div>
+                <div class="value">{{ $sale->client?->name ?? 'Client comptoir' }}</div>
+                @if($sale->client?->phone)<div class="muted">Tél. {{ $sale->client->phone }}</div>@endif
+                @if($sale->client?->address || $sale->client?->city)<div class="muted">{{ trim(($sale->client->address ?? '') . ' ' . ($sale->client->city ?? '')) }}</div>@endif
+            </td>
+            <td>
+                <div class="label">Date</div>
+                <div class="value">{{ $sale->created_at->format('d/m/Y') }}</div>
+                <div class="muted">{{ $sale->created_at->format('H:i') }} · {{ $sale->user?->name }}</div>
+            </td>
+            <td class="last right">
+                <div class="label">Statut</div>
+                <span class="badge badge-{{ $sale->status }}">{{ $statusLabels[$sale->status] ?? $sale->status }}</span>
+            </td>
+        </tr>
+    </table>
+
+    {{-- Articles --}}
+    <table class="items">
+        <thead>
+            <tr>
+                <th style="width: 5%;">#</th>
+                <th>Désignation</th>
+                <th class="right" style="width: 13%;">Qté</th>
+                <th class="right" style="width: 17%;">Prix unit.</th>
+                <th class="right" style="width: 19%;">Montant</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach($sale->items as $i => $item)
+            <tr>
+                <td class="muted">{{ $i + 1 }}</td>
+                <td>
+                    <span class="bold">{{ $item->product_name }}</span>
+                    @if($item->product?->reference)<br><span class="ref">{{ $item->product->reference }}</span>@endif
+                </td>
+                <td class="right">{{ $item->quantity }} {{ $item->product?->unit }}</td>
+                <td class="right">{{ $money($item->unit_price) }}</td>
+                <td class="right bold">{{ $money($item->subtotal) }}</td>
+            </tr>
+            @endforeach
+        </tbody>
+    </table>
+
+    {{-- Paiements + totaux --}}
+    <table style="margin-top: {{ $px(14) }};">
+        <tr>
+            <td style="padding-right: {{ $px(18) }};">
+                @if($sale->payments->isNotEmpty())
+                    <div class="section-title">Paiements reçus</div>
+                    <table class="payments">
+                        @foreach($sale->payments->sortBy('created_at') as $payment)
+                        <tr>
+                            <td>{{ $payment->created_at->format('d/m/Y') }}</td>
+                            <td>{{ $methodLabels[$payment->method] ?? $payment->method }}</td>
+                            <td class="right">{{ $money($payment->amount) }} {{ $currency }}</td>
+                        </tr>
+                        @endforeach
+                    </table>
                 @endif
-            </div>
-        </div>
-        
-        <table class="items-table">
-            <thead>
-                <tr>
-                    <th>N°</th>
-                    <th>Produit</th>
-                    <th>Prix</th>
-                    <th>Qté</th>
-                    <th>Total</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($sale->items as $index => $item)
-                <tr>
-                    <td>{{ $index + 1 }}</td>
-                    <td>{{ $item->product_name }}</td>
-                    <td>{{ number_format($item->unit_price, 0, ',', ' ') }}</td>
-                    <td>{{ $item->quantity }}</td>
-                    <td>{{ number_format($item->subtotal, 0, ',', ' ') }}</td>
-                </tr>
-                @endforeach
-            </tbody>
-        </table>
-        
-        <div class="summary-section">
-            <div class="payment-info">
-                <div class="payment-card">
-                    <div class="payment-title">Paiement</div>
-                    @if($sale->paid_amount > 0)
-                    <div class="payment-row paid">
-                        <span>Payé</span>
-                        <span>{{ number_format($sale->paid_amount, 0, ',', ' ') }} CFA</span>
-                    </div>
-                    <div class="payment-row remaining">
-                        <span>Reste</span>
-                        <span>{{ number_format($sale->total - $sale->paid_amount, 0, ',', ' ') }} CFA</span>
-                    </div>
-                    @else
-                    <div class="payment-row"><span>Aucun paiement</span></div>
-                    @endif
-                </div>
-            </div>
-            <div class="totals-box">
-                <div class="totals-card">
-                    <div class="total-line subtotal">
-                        <span>Sous-total</span>
-                        <span>{{ number_format($sale->subtotal, 0, ',', ' ') }}</span>
-                    </div>
-                    <div class="total-line tax">
-                        <span>TVA 19%</span>
-                        <span>{{ number_format($sale->tax_amount, 0, ',', ' ') }}</span>
-                    </div>
+            </td>
+            <td style="width: 46%;">
+                <table class="totals">
+                    <tr><td class="muted">Sous-total HT</td><td class="right">{{ $money($sale->subtotal) }} {{ $currency }}</td></tr>
+                    <tr><td class="muted">TVA ({{ $taxRate }} %)</td><td class="right">{{ $money($sale->tax_amount) }} {{ $currency }}</td></tr>
                     @if($sale->discount > 0)
-                    <div class="total-line discount">
-                        <span>Remise</span>
-                        <span>-{{ number_format($sale->discount, 0, ',', ' ') }}</span>
-                    </div>
+                    <tr><td class="muted">Remise</td><td class="right">- {{ $money($sale->discount) }} {{ $currency }}</td></tr>
                     @endif
-                    <div class="total-line grand-total">
-                        <span>Total TTC</span>
-                        <span>{{ number_format($sale->total, 0, ',', ' ') }}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        @if($sale->notes)
-        <div class="notes-box">
-            <strong>Note:</strong> {{ $sale->notes }}
-        </div>
-        @endif
-        
-        <div class="footer">
-            <div class="footer-thanks">Merci pour votre confiance</div>
-            <div class="footer-generated">Système de gestion de quincaillerie</div>
-        </div>
+                    <tr class="grand"><td>Total TTC</td><td class="right">{{ $money($sale->total) }} {{ $currency }}</td></tr>
+                    <tr class="paid"><td>Payé</td><td class="right">{{ $money($sale->paid_amount) }} {{ $currency }}</td></tr>
+                    @if($sale->remaining_amount > 0)
+                    <tr class="due"><td>Reste à payer</td><td class="right">{{ $money($sale->remaining_amount) }} {{ $currency }}</td></tr>
+                    @endif
+                </table>
+            </td>
+        </tr>
+    </table>
+
+    @if($inWords)
+        <div class="words">Arrêtée la présente facture à la somme de <span class="bold">{{ $inWords }} francs CFA</span> TTC.</div>
+    @endif
+
+    @if($sale->notes)
+        <div class="notes"><span class="bold">Note :</span> {{ $sale->notes }}</div>
+    @endif
+
+    <table class="sign">
+        <tr>
+            <td><div class="box"></div>Signature du client</td>
+            <td><div class="box" style="margin-right:0"></div>Cachet et signature</td>
+        </tr>
+    </table>
+    <div class="footer">
+        {{ $settings['invoice_footer'] }}<br>
+        {{ $settings['company_name'] }} · {{ $settings['company_address'] }}
+        @if($settings['company_ninea']) · NINEA {{ $settings['company_ninea'] }} @endif
+        @if($settings['company_rccm']) · RCCM {{ $settings['company_rccm'] }} @endif
     </div>
 </body>
 </html>
-

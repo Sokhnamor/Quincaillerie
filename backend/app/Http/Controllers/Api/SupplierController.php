@@ -9,23 +9,30 @@ use Illuminate\Http\Request;
 
 class SupplierController extends Controller
 {
+    private const RULES = [
+        'phone' => 'nullable|string|max:30',
+        'email' => 'nullable|email|max:255',
+        'address' => 'nullable|string|max:500',
+        'city' => 'nullable|string|max:100',
+    ];
+
     /**
      * Display a paginated list of suppliers
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Supplier::query();
+        $query = Supplier::withCount('products')->withSum('purchases', 'total');
 
-        if ($request->has('search') && $request->search) {
-            $search = $request->search;
+        if ($search = $request->search) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                   ->orWhere('email', 'like', "%{$search}%")
-                  ->orWhere('phone', 'like', "%{$search}%");
+                  ->orWhere('phone', 'like', "%{$search}%")
+                  ->orWhere('city', 'like', "%{$search}%");
             });
         }
 
-        $suppliers = $query->orderBy('name')->paginate($request->per_page ?? 15);
+        $suppliers = $query->orderBy('name')->paginate(min((int) ($request->per_page ?? 15), 100));
 
         return response()->json($suppliers);
     }
@@ -35,13 +42,7 @@ class SupplierController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'phone' => 'nullable|string|max:20',
-            'email' => 'nullable|email',
-            'address' => 'nullable|string',
-            'city' => 'nullable|string|max:100',
-        ]);
+        $validated = $request->validate(['name' => 'required|string|max:255'] + self::RULES);
 
         $supplier = Supplier::create($validated);
 
@@ -57,7 +58,9 @@ class SupplierController extends Controller
     public function show(Supplier $supplier): JsonResponse
     {
         return response()->json([
-            'supplier' => $supplier->load(['products', 'purchases'])
+            'supplier' => $supplier->loadCount('products')->loadSum('purchases', 'total'),
+            'products' => $supplier->products()->select(['id', 'name', 'reference', 'stock', 'alert_threshold', 'purchase_price', 'supplier_id'])->orderBy('name')->get(),
+            'purchases' => $supplier->purchases()->latest()->limit(10)->get(['id', 'invoice_number', 'total', 'status', 'created_at']),
         ]);
     }
 
@@ -66,13 +69,7 @@ class SupplierController extends Controller
      */
     public function update(Request $request, Supplier $supplier): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => 'sometimes|string|max:255',
-            'phone' => 'nullable|string|max:20',
-            'email' => 'nullable|email',
-            'address' => 'nullable|string',
-            'city' => 'nullable|string|max:100',
-        ]);
+        $validated = $request->validate(['name' => 'sometimes|string|max:255'] + self::RULES);
 
         $supplier->update($validated);
 
@@ -87,9 +84,9 @@ class SupplierController extends Controller
      */
     public function destroy(Supplier $supplier): JsonResponse
     {
-        if ($supplier->products()->count() > 0) {
+        if ($supplier->products()->exists() || $supplier->purchases()->exists()) {
             return response()->json([
-                'message' => 'Impossible de supprimer ce fournisseur car il a des produits associés'
+                'message' => 'Ce fournisseur a des produits ou des achats associés : il ne peut pas être supprimé.'
             ], 422);
         }
 
@@ -105,8 +102,6 @@ class SupplierController extends Controller
      */
     public function all(): JsonResponse
     {
-        $suppliers = Supplier::orderBy('name')->get();
-
-        return response()->json($suppliers);
+        return response()->json(Supplier::orderBy('name')->get(['id', 'name', 'phone', 'email', 'city']));
     }
 }

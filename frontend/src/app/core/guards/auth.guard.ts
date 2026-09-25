@@ -1,21 +1,29 @@
 import { inject } from '@angular/core';
-import { Router, CanActivateFn, RouterStateSnapshot, ActivatedRouteSnapshot } from '@angular/router';
+import { CanActivateFn, Router } from '@angular/router';
+import { RoleName } from '../models';
 import { AuthService } from '../services/auth.service';
 
-export const AuthGuard: CanActivateFn = (route: ActivatedRouteSnapshot, state: RouterStateSnapshot): boolean => {
-  const authService = inject(AuthService);
-  const router = inject(Router);
-
-  // Allow access to dashboard, products, categories, suppliers, clients without authentication
-  const publicRoutes = ['/dashboard', '/', '/products', '/categories', '/suppliers', '/clients'];
-  if (publicRoutes.includes(state.url)) {
+/** Only authenticated users */
+export const authGuard: CanActivateFn = (_route, state) => {
+  const auth = inject(AuthService);
+  if (auth.isAuthenticated()) {
     return true;
   }
+  return inject(Router).createUrlTree(['/login'], { queryParams: { returnUrl: state.url } });
+};
 
-  if (authService.isLoggedIn()) {
+/** Only visitors (login page) */
+export const guestGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  return auth.isAuthenticated() ? inject(Router).createUrlTree(['/dashboard']) : true;
+};
+
+/** Restricts a route to the roles listed in route.data.roles */
+export const roleGuard: CanActivateFn = (route) => {
+  const auth = inject(AuthService);
+  const roles = (route.data['roles'] ?? []) as RoleName[];
+  if (!roles.length || auth.hasRole(...roles)) {
     return true;
   }
-
-  router.navigate(['/login'], { queryParams: { returnUrl: state.url } });
-  return false;
+  return inject(Router).createUrlTree(['/dashboard']);
 };

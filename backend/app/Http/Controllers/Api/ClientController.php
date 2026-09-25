@@ -9,23 +9,41 @@ use Illuminate\Http\Request;
 
 class ClientController extends Controller
 {
+    private const RULES = [
+        'phone' => 'nullable|string|max:30',
+        'email' => 'nullable|email|max:255',
+        'address' => 'nullable|string|max:500',
+        'city' => 'nullable|string|max:100',
+    ];
+
     /**
-     * Display a paginated list of clients
+     * Display a paginated list of clients with their purchase totals and debt
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Client::query();
+        $query = Client::withCount('sales')
+            ->withSum('sales', 'total')
+            ->withSum('sales', 'paid_amount');
 
-        if ($request->has('search') && $request->search) {
-            $search = $request->search;
+        if ($search = $request->search) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                   ->orWhere('email', 'like', "%{$search}%")
-                  ->orWhere('phone', 'like', "%{$search}%");
+                  ->orWhere('phone', 'like', "%{$search}%")
+                  ->orWhere('city', 'like', "%{$search}%");
             });
         }
 
-        $clients = $query->orderBy('name')->paginate($request->per_page ?? 15);
+        if ($request->boolean('with_debt')) {
+            $query->whereHas('sales', fn ($q) => $q->where('status', '!=', 'paid'));
+        }
+
+        $clients = $query->orderBy('name')->paginate(min((int) ($request->per_page ?? 15), 100));
+
+        $clients->getCollection()->transform(function ($client) {
+            $client->balance_due = max(0, (float) $client->sales_sum_total - (float) $client->sales_sum_paid_amount);
+            return $client;
+        });
 
         return response()->json($clients);
     }
@@ -35,13 +53,7 @@ class ClientController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'phone' => 'nullable|string|max:20',
-            'email' => 'nullable|email',
-            'address' => 'nullable|string',
-            'city' => 'nullable|string|max:100',
-        ]);
+        $validated = $request->validate(['name' => 'required|string|max:255'] + self::RULES);
 
         $client = Client::create($validated);
 
@@ -52,12 +64,23 @@ class ClientController extends Controller
     }
 
     /**
-     * Display the specified client
+     * Display the specified client with purchase history
      */
     public function show(Client $client): JsonResponse
     {
+        $sales = $client->sales()->latest()->limit(20)
+            ->get(['id', 'invoice_number', 'total', 'paid_amount', 'status', 'created_at']);
+
+        $totals = $client->sales()->selectRaw('COUNT(*) as count, COALESCE(SUM(total),0) as total, COALESCE(SUM(paid_amount),0) as paid')->first();
+
         return response()->json([
-            'client' => $client->load(['sales'])
+            'client' => $client,
+            'sales' => $sales,
+            'stats' => [
+                'sales_count' => (int) $totals->count,
+                'total_spent' => (float) $totals->total,
+                'balance_due' => max(0, (float) $totals->total - (float) $totals->paid),
+            ],
         ]);
     }
 
@@ -66,13 +89,7 @@ class ClientController extends Controller
      */
     public function update(Request $request, Client $client): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => 'sometimes|string|max:255',
-            'phone' => 'nullable|string|max:20',
-            'email' => 'nullable|email',
-            'address' => 'nullable|string',
-            'city' => 'nullable|string|max:100',
-        ]);
+        $validated = $request->validate(['name' => 'sometimes|string|max:255'] + self::RULES);
 
         $client->update($validated);
 
@@ -87,9 +104,9 @@ class ClientController extends Controller
      */
     public function destroy(Client $client): JsonResponse
     {
-        if ($client->sales()->count() > 0) {
+        if ($client->sales()->exists()) {
             return response()->json([
-                'message' => 'Impossible de supprimer ce client car il a des ventes associées'
+                'message' => 'Ce client a des ventes associées : il ne peut pas être supprimé.'
             ], 422);
         }
 
@@ -105,8 +122,6 @@ class ClientController extends Controller
      */
     public function all(): JsonResponse
     {
-        $clients = Client::orderBy('name')->get();
-
-        return response()->json($clients);
+        return response()->json(Client::orderBy('name')->get(['id', 'name', 'phone', 'city']));
     }
 }

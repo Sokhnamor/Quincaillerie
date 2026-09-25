@@ -1,292 +1,212 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, map } from 'rxjs';
+import { environment } from '../../../environments/environment';
+import {
+  Category, Client, DashboardData, InvoiceFormat, Paginated, Product, Purchase, Role, Sale, SalesSummary,
+  Settings, StockMovement, Supplier, User,
+} from '../models';
 
-export interface DashboardStats {
-  today_sales: number;
-  month_sales: number;
-  month_purchases: number;
-  stock_value: number;
-  low_stock_count: number;
-  out_of_stock_count?: number;
-  sales_growth: number;
-  purchases_growth: number;
+type Query = Record<string, string | number | boolean | null | undefined>;
+
+/** Builds HttpParams, skipping empty values */
+function toParams(query: Query = {}): HttpParams {
+  let params = new HttpParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== null && value !== undefined && value !== '') {
+      params = params.set(key, String(value));
+    }
+  }
+  return params;
 }
 
-export interface SalesChart {
-  labels: string[];
-  data: number[];
-}
-
-export interface RecentSale {
-  id: number;
-  invoice_number: string;
-  client_name: string;
-  total: number;
-  status: string;
-  created_at: string;
-  client?: {
-    name: string;
-  };
-}
-
-export interface LowStockAlert {
-  id: number;
-  name: string;
-  stock: number;
-  alert_threshold: number;
-}
-
-export interface Product {
-  id: number;
-  name: string;
-  purchase_price: number;
-  selling_price: number;
-  stock: number;
-  alert_threshold: number;
-  category_id: number;
-  supplier_id: number;
-  category?: Category;
-  supplier?: Supplier;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Category {
-  id: number;
-  name: string;
-  products_count?: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Supplier {
-  id: number;
-  name: string;
-  phone: string;
-  address: string;
-  email: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Client {
-  id: number;
-  name: string;
-  phone: string;
-  address: string;
-  city: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Sale {
-  id: number;
-  invoice_number: string;
-  client_id: number;
-  user_id: number;
-  subtotal: number;
-  tax_amount: number;
-  total: number;
-  status: 'paid' | 'unpaid' | 'partial';
-  payment_status: string;
-  created_at: string;
-  client?: Client;
-  items?: SaleItem[];
-}
-
-export interface SaleItem {
-  id: number;
-  sale_id: number;
-  product_id: number;
-  product_name: string;
-  quantity: number;
-  unit_price: number;
-  subtotal: number;
-}
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  current_page: number;
-  last_page: number;
-  per_page: number;
-  total: number;
-}
-
-@Injectable({
-  providedIn: 'root'
-})
+@Injectable({ providedIn: 'root' })
 export class ApiService {
-  private apiUrl = 'http://localhost:8000/api';
-
-  constructor(private http: HttpClient) {}
+  private http = inject(HttpClient);
+  private url = environment.apiUrl;
 
   // Dashboard
-  getDashboardStats(): Observable<DashboardStats> {
-    return this.http.get<DashboardStats>(`${this.apiUrl}/dashboard/stats`);
+  getDashboard(): Observable<DashboardData> {
+    return this.http.get<DashboardData>(`${this.url}/dashboard`);
   }
 
-  getSalesChart(): Observable<SalesChart> {
-    return this.http.get<SalesChart>(`${this.apiUrl}/dashboard/charts`);
+  getAlerts(): Observable<DashboardData['alerts']> {
+    return this.http.get<DashboardData['alerts']>(`${this.url}/dashboard/alerts`);
   }
 
-  getRecentSales(): Observable<RecentSale[]> {
-    return this.http.get<{sales: RecentSale[]}>(`${this.apiUrl}/dashboard/recent-sales`).pipe(
-      map(response => response.sales.map(sale => ({
-        ...sale,
-        client_name: sale.client_name || sale.client?.name || 'Client inconnu'
-      })))
-    );
+  // Settings
+  getSettings(): Observable<Settings> {
+    return this.http.get<Settings>(`${this.url}/settings`);
   }
 
-  getLowStockAlerts(): Observable<LowStockAlert[]> {
-    return this.http.get<{low_stock: LowStockAlert[], out_of_stock: LowStockAlert[]}>(`${this.apiUrl}/dashboard/alerts`).pipe(
-      map(response => [...response.low_stock, ...response.out_of_stock])
-    );
+  updateSettings(data: Settings): Observable<{ settings: Settings; message: string }> {
+    return this.http.put<{ settings: Settings; message: string }>(`${this.url}/settings`, data);
   }
 
   // Products
-  getProducts(page = 1, search = '', categoryId?: number): Observable<PaginatedResponse<Product>> {
-    let params = new HttpParams()
-      .set('page', page.toString())
-      .set('search', search);
-    
-    if (categoryId) {
-      params = params.set('category_id', categoryId.toString());
-    }
-    
-    return this.http.get<PaginatedResponse<Product>>(`${this.apiUrl}/products`, { params });
+  getProducts(query: Query = {}): Observable<Paginated<Product>> {
+    return this.http.get<Paginated<Product>>(`${this.url}/products`, { params: toParams(query) });
   }
 
-  getProduct(id: number): Observable<Product> {
-    return this.http.get<Product>(`${this.apiUrl}/products/${id}`);
+  getProductsForSale(query: Query = {}): Observable<Product[]> {
+    return this.http.get<Product[]>(`${this.url}/products/for-sale`, { params: toParams(query) });
   }
 
-  createProduct(data: Partial<Product>): Observable<Product> {
-    return this.http.post<Product>(`${this.apiUrl}/products`, data);
+  getProduct(id: number): Observable<{ product: Product; stats: { quantity_sold: number; revenue: number }; movements: StockMovement[] }> {
+    return this.http.get<{ product: Product; stats: { quantity_sold: number; revenue: number }; movements: StockMovement[] }>(`${this.url}/products/${id}`);
   }
 
-  updateProduct(id: number, data: Partial<Product>): Observable<Product> {
-    return this.http.put<Product>(`${this.apiUrl}/products/${id}`, data);
+  saveProduct(data: Partial<Product>, id?: number): Observable<{ product: Product; message: string }> {
+    return id
+      ? this.http.put<{ product: Product; message: string }>(`${this.url}/products/${id}`, data)
+      : this.http.post<{ product: Product; message: string }>(`${this.url}/products`, data);
   }
 
-  deleteProduct(id: number): Observable<void> {
-    return this.http.delete<void>(`${this.apiUrl}/products/${id}`);
+  adjustStock(id: number, data: { mode: 'add' | 'remove' | 'set'; quantity: number; note: string }): Observable<{ product: Product; message: string }> {
+    return this.http.post<{ product: Product; message: string }>(`${this.url}/products/${id}/adjust-stock`, data);
   }
 
-  // Categories - returns array directly (using /categories/all endpoint)
+  deleteProduct(id: number): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(`${this.url}/products/${id}`);
+  }
+
+  // Stock journal
+  getStockMovements(query: Query = {}): Observable<Paginated<StockMovement>> {
+    return this.http.get<Paginated<StockMovement>>(`${this.url}/stock-movements`, { params: toParams(query) });
+  }
+
+  // Categories
   getCategories(): Observable<Category[]> {
-    return this.http.get<Category[]>(`${this.apiUrl}/categories/all`);
+    return this.http.get<Category[]>(`${this.url}/categories/all`);
   }
 
-  getCategory(id: number): Observable<Category> {
-    return this.http.get<Category>(`${this.apiUrl}/categories/${id}`);
+  saveCategory(data: Partial<Category>, id?: number): Observable<{ category: Category; message: string }> {
+    return id
+      ? this.http.put<{ category: Category; message: string }>(`${this.url}/categories/${id}`, data)
+      : this.http.post<{ category: Category; message: string }>(`${this.url}/categories`, data);
   }
 
-  createCategory(data: Partial<Category>): Observable<Category> {
-    return this.http.post<Category>(`${this.apiUrl}/categories`, data);
+  deleteCategory(id: number): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(`${this.url}/categories/${id}`);
   }
 
-  updateCategory(id: number, data: Partial<Category>): Observable<Category> {
-    return this.http.put<Category>(`${this.apiUrl}/categories/${id}`, data);
+  // Suppliers
+  getSuppliers(query: Query = {}): Observable<Paginated<Supplier>> {
+    return this.http.get<Paginated<Supplier>>(`${this.url}/suppliers`, { params: toParams(query) });
   }
 
-  deleteCategory(id: number): Observable<void> {
-    return this.http.delete<void>(`${this.apiUrl}/categories/${id}`);
+  getAllSuppliers(): Observable<Supplier[]> {
+    return this.http.get<Supplier[]>(`${this.url}/suppliers/all`);
   }
 
-  // Suppliers - returns array directly (using /suppliers/all endpoint)
-  getSuppliers(page = 1, search = ''): Observable<Supplier[]> {
-    return this.http.get<Supplier[]>(`${this.apiUrl}/suppliers/all`);
+  getSupplierDetail(id: number): Observable<{ supplier: Supplier; products: Product[]; purchases: Purchase[] }> {
+    return this.http.get<{ supplier: Supplier; products: Product[]; purchases: Purchase[] }>(`${this.url}/suppliers/${id}`);
   }
 
-  getSupplier(id: number): Observable<Supplier> {
-    return this.http.get<Supplier>(`${this.apiUrl}/suppliers/${id}`);
+  saveSupplier(data: Partial<Supplier>, id?: number): Observable<{ supplier: Supplier; message: string }> {
+    return id
+      ? this.http.put<{ supplier: Supplier; message: string }>(`${this.url}/suppliers/${id}`, data)
+      : this.http.post<{ supplier: Supplier; message: string }>(`${this.url}/suppliers`, data);
   }
 
-  createSupplier(data: Partial<Supplier>): Observable<Supplier> {
-    return this.http.post<Supplier>(`${this.apiUrl}/suppliers`, data);
+  deleteSupplier(id: number): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(`${this.url}/suppliers/${id}`);
   }
 
-  updateSupplier(id: number, data: Partial<Supplier>): Observable<Supplier> {
-    return this.http.put<Supplier>(`${this.apiUrl}/suppliers/${id}`, data);
+  // Clients
+  getClients(query: Query = {}): Observable<Paginated<Client>> {
+    return this.http.get<Paginated<Client>>(`${this.url}/clients`, { params: toParams(query) });
   }
 
-  deleteSupplier(id: number): Observable<void> {
-    return this.http.delete<void>(`${this.apiUrl}/suppliers/${id}`);
+  getAllClients(): Observable<Client[]> {
+    return this.http.get<Client[]>(`${this.url}/clients/all`);
   }
 
-  // Clients - returns array directly (using /clients/all endpoint)
-  getClients(page = 1, search = ''): Observable<Client[]> {
-    return this.http.get<Client[]>(`${this.apiUrl}/clients/all`);
+  getClient(id: number): Observable<{ client: Client; sales: Sale[]; stats: { sales_count: number; total_spent: number; balance_due: number } }> {
+    return this.http.get<{ client: Client; sales: Sale[]; stats: { sales_count: number; total_spent: number; balance_due: number } }>(`${this.url}/clients/${id}`);
   }
 
-  getClient(id: number): Observable<Client> {
-    return this.http.get<Client>(`${this.apiUrl}/clients/${id}`);
+  saveClient(data: Partial<Client>, id?: number): Observable<{ client: Client; message: string }> {
+    return id
+      ? this.http.put<{ client: Client; message: string }>(`${this.url}/clients/${id}`, data)
+      : this.http.post<{ client: Client; message: string }>(`${this.url}/clients`, data);
   }
 
-  createClient(data: Partial<Client>): Observable<Client> {
-    return this.http.post<Client>(`${this.apiUrl}/clients`, data);
-  }
-
-  updateClient(id: number, data: Partial<Client>): Observable<Client> {
-    return this.http.put<Client>(`${this.apiUrl}/clients/${id}`, data);
-  }
-
-  deleteClient(id: number): Observable<void> {
-    return this.http.delete<void>(`${this.apiUrl}/clients/${id}`);
+  deleteClient(id: number): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(`${this.url}/clients/${id}`);
   }
 
   // Sales
-  getSales(page = 1, search = '', status?: string, startDate?: string, endDate?: string): Observable<PaginatedResponse<Sale>> {
-    let params = new HttpParams()
-      .set('page', page.toString())
-      .set('search', search);
-    
-    if (status) params = params.set('status', status);
-    if (startDate) params = params.set('start_date', startDate);
-    if (endDate) params = params.set('end_date', endDate);
-    
-    return this.http.get<PaginatedResponse<Sale>>(`${this.apiUrl}/sales`, { params });
+  getSales(query: Query = {}): Observable<Paginated<Sale>> {
+    return this.http.get<Paginated<Sale>>(`${this.url}/sales`, { params: toParams(query) });
+  }
+
+  getSalesSummary(query: Query = {}): Observable<SalesSummary> {
+    return this.http.get<SalesSummary>(`${this.url}/sales/summary`, { params: toParams(query) });
   }
 
   getSale(id: number): Observable<Sale> {
-    return this.http.get<{sale: Sale}>(`${this.apiUrl}/sales/${id}`).pipe(
-      map(response => response.sale)
-    );
+    return this.http.get<{ sale: Sale }>(`${this.url}/sales/${id}`).pipe(map(r => r.sale));
   }
 
-  createSale(data: any): Observable<Sale> {
-    return this.http.post<{sale: Sale}>(`${this.apiUrl}/sales`, data).pipe(
-      map(response => response.sale)
-    );
+  createSale(data: unknown): Observable<Sale> {
+    return this.http.post<{ sale: Sale }>(`${this.url}/sales`, data).pipe(map(r => r.sale));
   }
 
-  updateSale(id: number, data: any): Observable<Sale> {
-    return this.http.put<{sale: Sale}>(`${this.apiUrl}/sales/${id}`, data).pipe(
-      map(response => response.sale)
-    );
+  updateSale(id: number, data: { client_id?: number | null; notes?: string | null }): Observable<Sale> {
+    return this.http.put<{ sale: Sale }>(`${this.url}/sales/${id}`, data).pipe(map(r => r.sale));
   }
 
-  updateSaleStatus(id: number, status: string): Observable<Sale> {
-    return this.http.put<{sale: Sale}>(`${this.apiUrl}/sales/${id}`, { status }).pipe(
-      map(response => response.sale)
-    );
+  addPayment(id: number, data: { amount: number; method: string; note?: string }): Observable<Sale> {
+    return this.http.post<{ sale: Sale }>(`${this.url}/sales/${id}/payments`, data).pipe(map(r => r.sale));
   }
 
-  deleteSale(id: number): Observable<void> {
-    return this.http.delete<void>(`${this.apiUrl}/sales/${id}`);
+  deleteSale(id: number): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(`${this.url}/sales/${id}`);
   }
 
-  exportSalesPdf(): Observable<Blob> {
-    return this.http.get(`${this.apiUrl}/sales/export/pdf`, { responseType: 'blob' });
+  /** Invoice PDF; without a format the one chosen in the settings is used */
+  downloadInvoicePdf(id: number, format?: InvoiceFormat): Observable<Blob> {
+    return this.http.get(`${this.url}/sales/${id}/pdf`, { params: toParams({ format }), responseType: 'blob' });
   }
 
-  exportSalesExcel(): Observable<Blob> {
-    return this.http.get(`${this.apiUrl}/sales/export/excel`, { responseType: 'blob' });
+  exportSales(format: 'pdf' | 'excel', query: Query = {}): Observable<Blob> {
+    return this.http.get(`${this.url}/sales/export/${format}`, { params: toParams(query), responseType: 'blob' });
   }
 
-  downloadInvoicePdf(saleId: number): Observable<Blob> {
-    return this.http.get(`${this.apiUrl}/sales/${saleId}/pdf`, { responseType: 'blob' });
+  // Purchases
+  getPurchases(query: Query = {}): Observable<Paginated<Purchase>> {
+    return this.http.get<Paginated<Purchase>>(`${this.url}/purchases`, { params: toParams(query) });
+  }
+
+  getPurchase(id: number): Observable<Purchase> {
+    return this.http.get<{ purchase: Purchase }>(`${this.url}/purchases/${id}`).pipe(map(r => r.purchase));
+  }
+
+  createPurchase(data: unknown): Observable<{ purchase: Purchase; message: string }> {
+    return this.http.post<{ purchase: Purchase; message: string }>(`${this.url}/purchases`, data);
+  }
+
+  deletePurchase(id: number): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(`${this.url}/purchases/${id}`);
+  }
+
+  // Users
+  getUsers(query: Query = {}): Observable<User[]> {
+    return this.http.get<User[]>(`${this.url}/users`, { params: toParams(query) });
+  }
+
+  getRoles(): Observable<Role[]> {
+    return this.http.get<Role[]>(`${this.url}/roles`);
+  }
+
+  saveUser(data: Partial<User> & { password?: string }, id?: number): Observable<{ user: User; message: string }> {
+    return id
+      ? this.http.put<{ user: User; message: string }>(`${this.url}/users/${id}`, data)
+      : this.http.post<{ user: User; message: string }>(`${this.url}/users`, data);
+  }
+
+  deleteUser(id: number): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(`${this.url}/users/${id}`);
   }
 }

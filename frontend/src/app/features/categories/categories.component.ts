@@ -1,169 +1,185 @@
-import { Component, OnInit, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ApiService, Category } from '../../core/services/api.service';
+import { RouterLink } from '@angular/router';
+import { ApiService } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
+import { NotifyService } from '../../core/services/notify.service';
+import { Category } from '../../core/models';
+import { ModalComponent } from '../../shared/components/modal.component';
 
 @Component({
   selector: 'app-categories',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [FormsModule, RouterLink, ModalComponent],
   template: `
-    <div class="categories-page fade-in">
+    <div class="page">
       <div class="page-header">
         <div>
-          <h1>Catégories</h1>
-          <p>Gérez les catégories de produits</p>
+          <h1 class="page-title">Catégories</h1>
+          <p class="page-subtitle">{{ categories().length }} catégories · {{ totalProducts() }} produits classés.</p>
         </div>
-        <button class="btn btn-primary" (click)="openModal()">
-          <i class="fas fa-plus"></i> Nouvelle catégorie
-        </button>
+        <div class="page-actions">
+          <div class="input-icon" style="min-width:240px">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input class="input" type="search" placeholder="Filtrer…" [ngModel]="filter()" (ngModelChange)="filter.set($event)">
+          </div>
+          @if (auth.canManage()) {
+            <button type="button" class="btn btn-primary" (click)="openForm()"><i class="fa-solid fa-plus"></i> Nouvelle catégorie</button>
+          }
+        </div>
       </div>
 
-      <div class="card">
-        <div class="card-body">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Nom</th>
-                <th>Nombre de produits</th>
-                <th>Date de création</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let category of categories()">
-                <td>{{ category.name }}</td>
-                <td>{{ category.products_count || 0 }}</td>
-                <td>{{ category.created_at | date:'dd/MM/yyyy' }}</td>
-                <td>
-                  <div class="action-buttons">
-                    <button class="btn-icon" (click)="editCategory(category)">
-                      <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="btn-icon text-danger" (click)="confirmDelete(category)">
-                      <i class="fas fa-trash"></i>
-                    </button>
+      @if (loading()) {
+        <div class="loading-block"><span class="spinner spinner-lg"></span></div>
+      } @else if (filtered().length === 0) {
+        <div class="card">
+          <div class="empty">
+            <div class="empty-icon"><i class="fa-solid fa-tags"></i></div>
+            <div class="empty-title">{{ filter() ? 'Aucune catégorie ne correspond' : 'Aucune catégorie' }}</div>
+            @if (auth.canManage() && !filter()) { <button type="button" class="btn btn-primary" (click)="openForm()"><i class="fa-solid fa-plus"></i> Créer une catégorie</button> }
+          </div>
+        </div>
+      } @else {
+        <div class="cat-grid">
+          @for (c of filtered(); track c.id) {
+            <div class="card cat-card">
+              <div class="row-between">
+                <span class="cat-icon" [style.--hue]="hue(c.name)"><i class="fa-solid fa-tag"></i></span>
+                @if (auth.canManage()) {
+                  <div class="actions">
+                    <button type="button" class="icon-btn" (click)="openForm(c)" aria-label="Modifier"><i class="fa-solid fa-pen"></i></button>
+                    <button type="button" class="icon-btn danger" (click)="remove(c)" aria-label="Supprimer"><i class="fa-solid fa-trash-can"></i></button>
                   </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Modal -->
-      <div class="modal-overlay" *ngIf="showModal()" (click)="closeModal()">
-        <div class="modal-content" (click)="$event.stopPropagation()">
-          <div class="modal-header">
-            <h3>{{ editingCategory() ? 'Modifier' : 'Nouvelle' }} catégorie</h3>
-            <button class="btn-icon" (click)="closeModal()">
-              <i class="fas fa-times"></i>
-            </button>
-          </div>
-          <div class="modal-body">
-            <form>
-              <div class="form-group">
-                <label class="form-label">Nom</label>
-                <input type="text" class="form-control" [(ngModel)]="categoryForm.name" name="name" required>
+                }
               </div>
-            </form>
-          </div>
-          <div class="modal-footer">
-            <button class="btn btn-secondary" (click)="closeModal()">Annuler</button>
-            <button class="btn btn-primary" (click)="saveCategory()">Enregistrer</button>
-          </div>
+              <div class="cat-name">{{ c.name }}</div>
+              <p class="cat-desc">{{ c.description || 'Aucune description' }}</p>
+              <a class="cat-link" [routerLink]="['/products']" [queryParams]="{ category: c.id }">
+                <span><strong>{{ c.products_count ?? 0 }}</strong> produit{{ (c.products_count ?? 0) > 1 ? 's' : '' }}</span>
+                <i class="fa-solid fa-arrow-right"></i>
+              </a>
+            </div>
+          }
         </div>
-      </div>
+      }
     </div>
+
+    <app-modal [open]="formOpen()" [title]="editing() ? 'Modifier la catégorie' : 'Nouvelle catégorie'" size="sm" (closed)="formOpen.set(false)">
+      <form id="catForm" class="stack" style="gap:16px" (ngSubmit)="save()">
+        <div class="field">
+          <label class="label" for="c-name">Nom <span class="req">*</span></label>
+          <input id="c-name" class="input" name="name" [(ngModel)]="form.name" required placeholder="Ex. : Plomberie">
+        </div>
+        <div class="field">
+          <label class="label" for="c-desc">Description</label>
+          <textarea id="c-desc" class="textarea" name="description" [(ngModel)]="form.description" rows="3" placeholder="Ce que contient cette catégorie"></textarea>
+        </div>
+      </form>
+      <ng-container footer>
+        <button type="button" class="btn btn-secondary" (click)="formOpen.set(false)">Annuler</button>
+        <button type="submit" form="catForm" class="btn btn-primary" [disabled]="saving() || !form.name.trim()">
+          @if (saving()) { <span class="spinner"></span> } Enregistrer
+        </button>
+      </ng-container>
+    </app-modal>
   `,
   styles: [`
-    .page-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1.5rem;
-    }
-    
-    .page-header h1 {
-      font-size: 1.75rem;
-      font-weight: 700;
-      color: var(--text-primary);
-    }
-    
-    .page-header p {
-      color: var(--text-secondary);
-      font-size: 0.875rem;
-    }
-    
-    .action-buttons {
-      display: flex;
-      gap: 0.5rem;
-    }
-    
-    .text-danger {
-      color: #ef4444;
-    }
+    .cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
+    .cat-card { padding: 18px; display: flex; flex-direction: column; gap: 8px; transition: border-color 0.15s, box-shadow 0.15s; }
+    .cat-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+    .cat-icon { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; background: hsl(var(--hue) 70% 50% / 0.12); color: hsl(var(--hue) 60% 42%); }
+    :host-context(html.dark) .cat-icon { color: hsl(var(--hue) 70% 68%); }
+    .cat-name { font-weight: 700; font-size: 16px; margin-top: 6px; }
+    .cat-desc { color: var(--text-2); font-size: 13px; min-height: 38px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .cat-link { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--border); color: var(--text-2); font-size: 13px; text-decoration: none !important; }
+    .cat-link:hover { color: var(--brand-text); }
   `]
 })
 export class CategoriesComponent implements OnInit {
-  categories = signal<Category[]>([]);
-  showModal = signal(false);
-  editingCategory = signal<Category | null>(null);
-  
-  categoryForm = {
-    name: ''
-  };
+  private api = inject(ApiService);
+  private notify = inject(NotifyService);
+  auth = inject(AuthService);
 
-  constructor(private api: ApiService) {}
+  categories = signal<Category[]>([]);
+  loading = signal(true);
+  saving = signal(false);
+  filter = signal('');
+  formOpen = signal(false);
+  editing = signal<Category | null>(null);
+  form = { name: '', description: '' };
+
+  filtered = computed(() => {
+    const q = this.filter().trim().toLowerCase();
+    return q ? this.categories().filter(c => c.name.toLowerCase().includes(q)) : this.categories();
+  });
+  totalProducts = computed(() => this.categories().reduce((n, c) => n + (c.products_count ?? 0), 0));
 
   ngOnInit(): void {
-    this.loadCategories();
+    this.load();
   }
 
-  loadCategories(): void {
-    this.api.getCategories().subscribe(data => this.categories.set(data));
+  load(): void {
+    this.api.getCategories().subscribe({
+      next: c => {
+        this.categories.set(c);
+        this.loading.set(false);
+      },
+      error: err => {
+        this.loading.set(false);
+        this.notify.error(err);
+      },
+    });
   }
 
-  openModal(): void {
-    this.editingCategory.set(null);
-    this.categoryForm = { name: '' };
-    this.showModal.set(true);
-  }
-
-  editCategory(category: Category): void {
-    this.editingCategory.set(category);
-    this.categoryForm = { name: category.name };
-    this.showModal.set(true);
-  }
-
-  closeModal(): void {
-    this.showModal.set(false);
-    this.editingCategory.set(null);
-  }
-
-  saveCategory(): void {
-    if (this.editingCategory()) {
-      this.api.updateCategory(this.editingCategory()!.id, this.categoryForm).subscribe({
-        next: () => {
-          this.loadCategories();
-          this.closeModal();
-        }
-      });
-    } else {
-      this.api.createCategory(this.categoryForm).subscribe({
-        next: () => {
-          this.loadCategories();
-          this.closeModal();
-        }
-      });
+  /** Stable hue per category name, for a subtle visual identity */
+  hue(name: string): number {
+    let h = 0;
+    for (const ch of name) {
+      h = (h * 31 + ch.charCodeAt(0)) % 360;
     }
+    return h;
   }
 
-  confirmDelete(category: Category): void {
-    if (confirm(`Êtes-vous sûr de vouloir supprimer "${category.name}"?`)) {
-      this.api.deleteCategory(category.id).subscribe({
-        next: () => this.loadCategories()
-      });
+  openForm(category?: Category): void {
+    this.editing.set(category ?? null);
+    this.form = { name: category?.name ?? '', description: category?.description ?? '' };
+    this.formOpen.set(true);
+  }
+
+  save(): void {
+    if (!this.form.name.trim()) {
+      return;
     }
+    this.saving.set(true);
+    this.api.saveCategory({ name: this.form.name.trim(), description: this.form.description || null }, this.editing()?.id).subscribe({
+      next: res => {
+        this.saving.set(false);
+        this.formOpen.set(false);
+        this.notify.success(res.message);
+        this.load();
+      },
+      error: err => {
+        this.saving.set(false);
+        this.notify.error(err);
+      },
+    });
+  }
+
+  async remove(category: Category): Promise<void> {
+    if ((category.products_count ?? 0) > 0) {
+      this.notify.error(`« ${category.name} » contient ${category.products_count} produit(s). Déplacez-les avant de supprimer la catégorie.`);
+      return;
+    }
+    const ok = await this.notify.confirm({ title: `Supprimer « ${category.name} » ?`, confirmText: 'Supprimer', danger: true });
+    if (!ok) {
+      return;
+    }
+    this.api.deleteCategory(category.id).subscribe({
+      next: res => {
+        this.notify.success(res.message);
+        this.load();
+      },
+      error: err => this.notify.error(err),
+    });
   }
 }

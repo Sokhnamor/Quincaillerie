@@ -1,194 +1,88 @@
-# Application de Gestion de Quincaillerie
+# Quincaillerie Pro
 
-## Description
+Application web de gestion de quincaillerie : point de vente, stock, factures, paiements, approvisionnements, clients et fournisseurs.
 
-Application web professionnelle de gestion de quincaillerie avec :
-- **Backend** : Laravel 11 (API RESTful)
-- **Frontend** : Angular 17+
-- **Base de données** : MySQL
-- **Authentification** : JWT (Laravel Sanctum)
-
-## Structure du projet
-
-```
-c:/Users/HP/Desktop/PRO/
-├── backend/          # Laravel 11 API
-├── frontend/          # Angular 17+ Application
-└── README.md
-```
+| Couche | Technologie |
+|---|---|
+| Backend | Laravel 12 (API REST), Sanctum (jetons), DomPDF, Laravel Excel |
+| Frontend | Angular 18 (composants standalone, signals), Chart.js, SweetAlert2 |
+| Base de données | MySQL 8 (SQLite en mémoire pour les tests) |
 
 ## Fonctionnalités
 
-### Modules développés
-- Dashboard avec statistiques et graphiques
-- Gestion des produits (CRUD, stocks, alertes)
-- Gestion des catégories
-- Gestion des fournisseurs
-- Gestion des clients
-- Gestion des ventes (facturation, statut)
-- Authentification avec rôles (Admin, Gestionnaire, Caissier)
-- Export PDF et Excel des ventes
-- Mode sombre
-- Design moderne type Admin Dashboard
+- **Point de vente** : grille produits, panier, espèces / Wave / Orange Money / carte, calcul de la monnaie, vente à crédit, facture PDF immédiate.
+- **Ventes** : filtres (statut, dates, recherche), totaux encaissés / restant dus, paiements échelonnés, annulation avec remise en stock, exports Excel et PDF.
+- **Stock** : alertes de seuil, ajustements motivés (inventaire, casse…), journal complet des mouvements, historique par produit.
+- **Approvisionnements** : réception fournisseur qui met à jour stock et prix d'achat, ajout automatique des produits en alerte.
+- **Tableau de bord** : CA du jour / du mois, encaissements, créances, marge, graphiques 12 mois / 30 jours, top produits.
+- **Administration** : utilisateurs et rôles, activation / désactivation, paramètres de l'entreprise (NINEA, RCCM, TVA, pied de facture).
+- Mode sombre, interface responsive (mobile / tablette).
+
+## Rôles
+
+| Rôle | Accès |
+|---|---|
+| Administrateur | Tout, y compris utilisateurs et paramètres |
+| Gestionnaire | Catalogue, stock, approvisionnements, annulation de ventes, exports |
+| Caissier | Point de vente, ventes, paiements, clients (lecture seule du catalogue) |
+
+Toutes les routes de l'API exigent une connexion, sauf `/api/login` (limitée à 5 tentatives par minute).
 
 ## Installation
 
-### Prérequis
-- PHP 8.5+
-- Composer
-- Node.js 18+
-- MySQL 8.0+
-- Angular CLI
-
-### Backend (Laravel)
-
-1. Naviguer vers le dossier backend :
-```
-bash
-cd c:/Users/HP/Desktop/PRO/backend
-```
-
-2. Installer les dépendances :
-```
-bash
-composer install
-```
-
-3. Configurer la base de données dans `.env` :
-```
-env
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=quincaillerie
-DB_USERNAME=root
-DB_PASSWORD=votre_mot_de_passe
-```
-
-4. Créer la base de données :
-```
-sql
-CREATE DATABASE quincaillerie CHARACTER4 COLLATE utf SET utf8mb8mb4_unicode_ci;
-```
-
-5. Générer la clé d'application :
-```
-bash
-php artisan key:generate
-```
-
-6. Exécuter les migrations et seeders :
-```
-bash
-php artisan migrate --seed
-```
-
-7. Publier la configuration Sanctum :
-```
-bash
-php artisan vendor:publish --provider="Laravel\Sanctum\SanctumServiceProvider"
-```
-
-8. Lancer le serveur backend :
-```
-bash
-php artisan serve
-```
-
-Le backend sera accessible sur `http://localhost:8000`
-
-### Frontend (Angular)
-
-1. Naviguer vers le dossier frontend :
-```
-bash
-cd c:/Users/HP/Desktop/PRO/frontend
-```
-
-2. Installer les dépendances :
-```
-bash
-npm install
-```
-
-3. Lancer le serveur de développement :
-```
-bash
-ng serve
-```
-
-L'application sera accessible sur `http://localhost:4200`
-
-## Comptes de test (après seed)
-
-| Rôle | Email | Mot de passe |
-|------|-------|--------------|
-| Admin | admin@quincaillerie.fr | password |
-| Gestionnaire | gestionnaire@quincaillerie.fr | password |
-| Caissier | caissier@quincaillerie.fr | password |
-
-## API Endpoints
-
-### Authentification
-- `POST /api/login` - Connexion
-- `POST /api/register` - Inscription
-- `POST /api/logout` - Déconnexion
-- `GET /api/user` - Utilisateur connecté
-
-### Dashboard
-- `GET /api/dashboard/stats` - Statistiques
-- `GET /api/dashboard/charts` - Graphiques
-- `GET /api/dashboard/recent-sales` - Ventes récentes
-- `GET /api/dashboard/alerts` - Alertes stock
-
-### Produits
-- `GET /api/products` - Liste paginée
-- `POST /api/products` - Créer
-- `GET /api/products/{id}` - Détails
-- `PUT /api/products/{id}` - Modifier
-- `DELETE /api/products/{id}` - Supprimer
-
-### Catégories
-- `GET /api/categories` - Liste
-- `POST /api/categories` - Créer
-- `PUT /api/categories/{id}` - Modifier
-- `DELETE /api/categories/{id}` - Supprimer
-
-### Fournisseurs
-- `GET /api/suppliers` - Liste paginée
-- `POST /api/suppliers` - Créer
-- `PUT /api/suppliers/{id}` - Modifier
-- `DELETE /api/suppliers/{id}` - Supprimer
-
-### Clients
-- `GET /api/clients` - Liste paginée
-- `POST /api/clients` - Créer
-- `PUT /api/clients/{id}` - Modifier
-- `DELETE /api/clients/{id}` - Supprimer
-
-### Ventes
-- `GET /api/sales` - Liste paginée
-- `POST /api/sales` - Créer
-- `GET /api/sales/{id}` - Détails
-- `PUT /api/sales/{id}` - Modifier
-- `DELETE /api/sales/{id}` - Supprimer
-- `GET /api/sales/export/pdf` - Export PDF
-- `GET /api/sales/export/excel` - Export Excel
-
-## Technologies utilisées
+Prérequis : PHP 8.2+, Composer, Node.js 18+, MySQL 8 (WAMP/XAMPP convient).
 
 ### Backend
-- Laravel 11
-- Laravel Sanctum (JWT)
-- barryvdh/laravel-dompdf
-- maatwebsite/excel
+
+```bash
+cd backend
+composer install
+cp .env.example .env          # puis renseigner DB_DATABASE, DB_USERNAME, DB_PASSWORD
+php artisan key:generate
+php artisan migrate --seed    # crée les tables, les rôles et les comptes de démonstration
+php artisan serve             # http://127.0.0.1:8000
+```
 
 ### Frontend
-- Angular 17+
-- Tailwind CSS
-- Chart.js
-- SweetAlert2
 
-## License
+```bash
+cd frontend
+npm install
+npm start                     # http://localhost:4200
+```
 
-Ce projet est open-source et disponible sous licence MIT.
+L'URL de l'API se règle dans `frontend/src/environments/environment.ts`.
+
+## Comptes de démonstration
+
+| Rôle | Email | Mot de passe |
+|---|---|---|
+| Administrateur | admin@quincaillerie.fr | password123 |
+| Gestionnaire | gestionnaire@quincaillerie.fr | password123 |
+| Caissier | caissier@quincaillerie.fr | password123 |
+
+Ils apparaissent en accès rapide sur la page de connexion tant que `showDemoAccounts` vaut `true` dans `environment.ts`. **Passez-le à `false` et changez ces mots de passe avant toute mise en production.**
+
+## Tests
+
+```bash
+cd backend
+php artisan test
+```
+
+Les tests couvrent : protection de l'API, calcul TVA et décrément du stock, annulation complète d'une vente en cas de stock insuffisant, unicité des numéros de facture, paiements partiels, droits par rôle, approvisionnements, ajustements de stock.
+
+## Structure
+
+```
+backend/
+  app/Http/Controllers/Api/   contrôleurs REST
+  app/Http/Middleware/        EnsureRole (contrôle des rôles)
+  app/Services/StockService   point d'entrée unique de tout mouvement de stock
+  app/Models/                 Eloquent (Sale, SalePayment, StockMovement, Setting…)
+  resources/views/            facture PDF et rapport des ventes
+frontend/src/app/
+  core/                       services API/auth, intercepteur, guards, modèles
+  shared/                     layout, modale, tiroir, pagination, format monétaire
+  features/                   une page par dossier (pos, sales, products, purchases…)
+```

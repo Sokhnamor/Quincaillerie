@@ -16,6 +16,7 @@ class Sale extends Model
         'client_id',
         'user_id',
         'subtotal',
+        'tax_rate',
         'tax_amount',
         'discount',
         'total',
@@ -26,11 +27,14 @@ class Sale extends Model
 
     protected $casts = [
         'subtotal' => 'decimal:2',
+        'tax_rate' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'discount' => 'decimal:2',
         'total' => 'decimal:2',
         'paid_amount' => 'decimal:2'
     ];
+
+    protected $appends = ['remaining_amount'];
 
     public function client(): BelongsTo
     {
@@ -47,9 +51,35 @@ class Sale extends Model
         return $this->hasMany(SaleItem::class);
     }
 
+    public function payments(): HasMany
+    {
+        return $this->hasMany(SalePayment::class)->latest();
+    }
+
     public function getRemainingAmountAttribute(): float
     {
-        return $this->total - $this->paid_amount;
+        return max(0, round((float) $this->total - (float) $this->paid_amount, 2));
+    }
+
+    /**
+     * Recompute paid amount and status from the recorded payments
+     */
+    public function refreshPaymentStatus(): void
+    {
+        $paid = (float) $this->payments()->sum('amount');
+
+        $this->paid_amount = $paid;
+        $this->status = static::statusFor($paid, (float) $this->total);
+        $this->save();
+    }
+
+    public static function statusFor(float $paid, float $total): string
+    {
+        if ($paid >= $total) {
+            return 'paid';
+        }
+
+        return $paid > 0 ? 'partial' : 'unpaid';
     }
 
     public function isPaid(): bool

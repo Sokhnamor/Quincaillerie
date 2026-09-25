@@ -1,143 +1,420 @@
-import { Component, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { RouterModule, Router } from '@angular/router';
+import { Component, DestroyRef, ElementRef, HostListener, OnInit, computed, inject, signal, viewChild } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { filter, interval, startWith, switchMap, catchError, of } from 'rxjs';
 import { AuthService } from '../../../core/services/auth.service';
+import { ThemeService } from '../../../core/services/theme.service';
+import { ApiService } from '../../../core/services/api.service';
+import { Product, RoleName } from '../../../core/models';
+import { initials } from '../../labels';
+
+interface NavItem {
+  label: string;
+  icon: string;
+  link: string;
+  roles?: RoleName[];
+}
+
+interface NavSection {
+  title: string;
+  items: NavItem[];
+}
+
+const MANAGERS: RoleName[] = ['admin', 'gestionnaire'];
+
+const NAV: NavSection[] = [
+  {
+    title: 'Principal',
+    items: [
+      { label: 'Tableau de bord', icon: 'fa-gauge-high', link: '/dashboard' },
+      { label: 'Point de vente', icon: 'fa-cash-register', link: '/pos' },
+      { label: 'Ventes', icon: 'fa-receipt', link: '/sales' },
+      { label: 'Clients', icon: 'fa-users', link: '/clients' },
+    ],
+  },
+  {
+    title: 'Stock',
+    items: [
+      { label: 'Produits', icon: 'fa-boxes-stacked', link: '/products' },
+      { label: 'Catégories', icon: 'fa-tags', link: '/categories' },
+      { label: 'Approvisionnements', icon: 'fa-truck-ramp-box', link: '/purchases', roles: MANAGERS },
+      { label: 'Mouvements', icon: 'fa-arrow-right-arrow-left', link: '/stock', roles: MANAGERS },
+      { label: 'Fournisseurs', icon: 'fa-industry', link: '/suppliers' },
+    ],
+  },
+  {
+    title: 'Administration',
+    items: [
+      { label: 'Utilisateurs', icon: 'fa-user-shield', link: '/users', roles: ['admin'] },
+      { label: 'Paramètres', icon: 'fa-gear', link: '/settings', roles: ['admin'] },
+    ],
+  },
+];
+
+const COLLAPSE_KEY = 'sidebar-collapsed';
 
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterModule],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive],
   template: `
-    <div class="app-layout" [class.sidebar-collapsed]="sidebarCollapsed()">
-      <aside class="sidebar" [class.collapsed]="sidebarCollapsed()">
-        <div class="sidebar-logo">
-          <div class="sidebar-logo-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-          </div>
-          <span class="sidebar-logo-text" *ngIf="!sidebarCollapsed()">Quincaillerie</span>
-        </div>
-        <nav class="sidebar-nav">
-          <a routerLink="/dashboard" routerLinkActive="active" class="sidebar-item" [title]="sidebarCollapsed() ? 'Dashboard' : ''">
-            <span class="sidebar-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg></span>
-            <span class="sidebar-label" *ngIf="!sidebarCollapsed()">Dashboard</span>
-          </a>
-          <a routerLink="/products" routerLinkActive="active" class="sidebar-item" [title]="sidebarCollapsed() ? 'Produits' : ''">
-            <span class="sidebar-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></svg></span>
-            <span class="sidebar-label" *ngIf="!sidebarCollapsed()">Produits</span>
-          </a>
-          <a routerLink="/categories" routerLinkActive="active" class="sidebar-item" [title]="sidebarCollapsed() ? 'Catégories' : ''">
-            <span class="sidebar-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"></path><path d="M7 7h.01"></path></svg></span>
-            <span class="sidebar-label" *ngIf="!sidebarCollapsed()">Catégories</span>
-          </a>
-          <a routerLink="/suppliers" routerLinkActive="active" class="sidebar-item" [title]="sidebarCollapsed() ? 'Fournisseurs' : ''">
-            <span class="sidebar-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="16" height="13" x="4" y="3" rx="2"/><path d="M4 8h16"/><path d="m4 16 4-4 4 4 4-4 4 4"/></svg></span>
-            <span class="sidebar-label" *ngIf="!sidebarCollapsed()">Fournisseurs</span>
-          </a>
-          <a routerLink="/clients" routerLinkActive="active" class="sidebar-item" [title]="sidebarCollapsed() ? 'Clients' : ''">
-            <span class="sidebar-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span>
-            <span class="sidebar-label" *ngIf="!sidebarCollapsed()">Clients</span>
-          </a>
-          <a routerLink="/sales" routerLinkActive="active" class="sidebar-item" [title]="sidebarCollapsed() ? 'Ventes' : ''">
-            <span class="sidebar-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="21" r="1"></circle><circle cx="19" cy="21" r="1"></circle><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"></path></svg></span>
-            <span class="sidebar-label" *ngIf="!sidebarCollapsed()">Ventes</span>
-          </a>
-        </nav>
-      </aside>
+    <div class="shell" [class.collapsed]="collapsed()" [class.mobile-open]="mobileOpen()">
+      <!-- Sidebar -->
+      <aside class="sidebar" aria-label="Navigation principale">
+        <a routerLink="/dashboard" class="brand" (click)="mobileOpen.set(false)">
+          <span class="brand-mark"><i class="fa-solid fa-screwdriver-wrench"></i></span>
+          <span class="brand-text">
+            <strong>Quincaillerie</strong>
+            <small>PRO</small>
+          </span>
+        </a>
 
-      <header class="topbar" [class.sidebar-collapsed]="sidebarCollapsed()">
-        <div class="topbar-left">
-          <button class="topbar-toggle" (click)="toggleSidebar()"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg></button>
-          <div class="topbar-search"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><input type="text" placeholder="Rechercher... (Ctrl+K)"></div>
-        </div>
-        <div class="topbar-right">
-          <button class="topbar-icon-btn" (click)="toggleDarkMode()"><svg *ngIf="!darkMode()" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg><svg *ngIf="darkMode()" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg></button>
-          <button class="topbar-icon-btn notification-btn"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg><span class="notification-badge" *ngIf="notificationCount() > 0">{{ notificationCount() }}</span></button>
-          <div class="user-menu" (click)="toggleUserMenu()">
-            <div class="user-avatar">{{ getUserInitials() }}</div>
-            <span class="user-name" *ngIf="!isMobile()">{{ userName() }}</span>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"></path></svg>
-            <div class="dropdown-menu" *ngIf="userMenuOpen()" (click)="$event.stopPropagation()">
-              <a class="dropdown-item"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>Profil</a>
-              <a class="dropdown-item"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path></svg>Paramètres</a>
-              <div class="dropdown-divider"></div>
-              <a class="dropdown-item text-danger" (click)="logout()"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>Déconnexion</a>
+        <nav class="nav">
+          @for (section of sections(); track section.title) {
+            <div class="nav-section">
+              <div class="nav-title">{{ section.title }}</div>
+              @for (item of section.items; track item.link) {
+                <a class="nav-item" [routerLink]="item.link" routerLinkActive="active" [attr.title]="collapsed() ? item.label : null" (click)="mobileOpen.set(false)">
+                  <i class="fa-solid {{ item.icon }}"></i>
+                  <span class="nav-label">{{ item.label }}</span>
+                  @if (item.link === '/products' && alertCount() > 0) {
+                    <span class="nav-badge">{{ alertCount() }}</span>
+                  }
+                </a>
+              }
             </div>
+          }
+        </nav>
+
+        <div class="sidebar-foot">
+          <a routerLink="/profile" class="me" (click)="mobileOpen.set(false)" [attr.title]="collapsed() ? userName() : null">
+            <span class="avatar avatar-sm">{{ userInitials() }}</span>
+            <span class="me-text">
+              <strong class="truncate">{{ userName() }}</strong>
+              <small>{{ auth.roleLabel() }}</small>
+            </span>
+          </a>
+          <button type="button" class="collapse-btn hide-mobile" (click)="toggleCollapse()" [attr.aria-label]="collapsed() ? 'Déplier le menu' : 'Replier le menu'">
+            <i class="fa-solid" [class.fa-angles-left]="!collapsed()" [class.fa-angles-right]="collapsed()"></i>
+          </button>
+        </div>
+      </aside>
+      <div class="scrim" (click)="mobileOpen.set(false)"></div>
+
+      <!-- Topbar -->
+      <header class="topbar">
+        <button type="button" class="icon-btn show-mobile" (click)="mobileOpen.set(true)" aria-label="Ouvrir le menu">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+
+        <form class="global-search" (submit)="search($event)" role="search">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input #searchInput type="search" name="q" placeholder="Rechercher un produit…" aria-label="Rechercher un produit" autocomplete="off">
+          <kbd>Ctrl K</kbd>
+        </form>
+
+        <div class="topbar-actions">
+          <a routerLink="/pos" class="btn btn-primary btn-sm new-sale">
+            <i class="fa-solid fa-plus"></i><span>Nouvelle vente</span>
+          </a>
+
+          <button type="button" class="icon-btn" (click)="theme.toggle()" [attr.aria-label]="theme.dark() ? 'Passer en mode clair' : 'Passer en mode sombre'" [attr.title]="theme.dark() ? 'Mode clair' : 'Mode sombre'">
+            <i class="fa-solid" [class.fa-moon]="!theme.dark()" [class.fa-sun]="theme.dark()"></i>
+          </button>
+
+          <div class="menu-anchor">
+            <button type="button" class="icon-btn bell" (click)="toggleMenu('alerts', $event)" aria-label="Alertes de stock" title="Alertes de stock">
+              <i class="fa-regular fa-bell"></i>
+              @if (alertCount() > 0) {
+                <span class="dot">{{ alertCount() > 9 ? '9+' : alertCount() }}</span>
+              }
+            </button>
+            @if (openMenu() === 'alerts') {
+              <div class="dropdown dropdown-alerts" (click)="$event.stopPropagation()">
+                <div class="dropdown-head">
+                  <strong>Alertes de stock</strong>
+                  <span class="badge {{ alertCount() ? 'badge-warning' : 'badge-success' }}">{{ alertCount() }}</span>
+                </div>
+                @if (alerts().length === 0) {
+                  <div class="empty empty-sm">
+                    <div class="empty-icon"><i class="fa-solid fa-check"></i></div>
+                    <p class="muted small">Aucun produit en alerte.</p>
+                  </div>
+                } @else {
+                  <div class="alert-list">
+                    @for (p of alerts(); track p.id) {
+                      <a class="alert-row" [routerLink]="['/products']" [queryParams]="{ search: p.reference || p.name }" (click)="openMenu.set(null)">
+                        <span class="alert-ico" [class.out]="p.stock <= 0"><i class="fa-solid" [class.fa-ban]="p.stock <= 0" [class.fa-triangle-exclamation]="p.stock > 0"></i></span>
+                        <span class="grow">
+                          <span class="truncate strong small" style="display:block">{{ p.name }}</span>
+                          <span class="xs subtle">{{ p.stock <= 0 ? 'Rupture de stock' : 'Reste ' + p.stock + ' ' + p.unit + ' (seuil ' + p.alert_threshold + ')' }}</span>
+                        </span>
+                      </a>
+                    }
+                  </div>
+                  @if (auth.canManage()) {
+                    <a routerLink="/purchases" [queryParams]="{ new: 1 }" class="dropdown-foot" (click)="openMenu.set(null)">
+                      <i class="fa-solid fa-truck-ramp-box"></i> Réapprovisionner
+                    </a>
+                  }
+                }
+              </div>
+            }
+          </div>
+
+          <div class="menu-anchor">
+            <button type="button" class="user-btn" (click)="toggleMenu('user', $event)" aria-label="Menu utilisateur">
+              <span class="avatar avatar-sm">{{ userInitials() }}</span>
+              <i class="fa-solid fa-chevron-down xs subtle hide-sm"></i>
+            </button>
+            @if (openMenu() === 'user') {
+              <div class="dropdown" (click)="$event.stopPropagation()">
+                <div class="dropdown-user">
+                  <span class="avatar">{{ userInitials() }}</span>
+                  <span class="stack grow" style="gap:0">
+                    <strong class="truncate">{{ userName() }}</strong>
+                    <span class="xs subtle truncate">{{ auth.currentUser()?.email }}</span>
+                  </span>
+                </div>
+                <a routerLink="/profile" class="dropdown-item" (click)="openMenu.set(null)"><i class="fa-regular fa-user"></i> Mon profil</a>
+                @if (auth.isAdmin()) {
+                  <a routerLink="/settings" class="dropdown-item" (click)="openMenu.set(null)"><i class="fa-solid fa-gear"></i> Paramètres</a>
+                  <a routerLink="/users" class="dropdown-item" (click)="openMenu.set(null)"><i class="fa-solid fa-user-shield"></i> Utilisateurs</a>
+                }
+                <div class="dropdown-sep"></div>
+                <button type="button" class="dropdown-item danger" (click)="logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Déconnexion</button>
+              </div>
+            }
           </div>
         </div>
       </header>
 
-      <main class="main-content" [class.sidebar-collapsed]="sidebarCollapsed()">
+      <main class="main">
+        @if (!auth.role()) {
+          <div class="role-warning">
+            <i class="fa-solid fa-circle-info"></i>
+            Aucun rôle n'est attribué à votre compte : certaines fonctions sont masquées. Demandez à un administrateur de vous en attribuer un.
+          </div>
+        }
         <router-outlet></router-outlet>
       </main>
     </div>
   `,
   styles: [`
-    .app-layout { min-height: 100vh; }
-    .sidebar { width: 260px; height: 100vh; background: var(--glass-bg); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-right: 1px solid var(--border-color); position: fixed; left: 0; top: 0; z-index: 50; transition: width 400ms cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; }
-    .sidebar.collapsed { width: 72px; }
-    .sidebar-logo { height: 64px; display: flex; align-items: center; padding: 0 1.25rem; border-bottom: 1px solid var(--border-light); }
-    .sidebar-logo-icon { width: 40px; height: 40px; background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
-    .sidebar-logo-icon svg { color: white; }
-    .sidebar-logo-text { margin-left: 0.75rem; font-size: 1.125rem; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
-    .sidebar.collapsed .sidebar-logo-text { display: none; }
-    .sidebar-nav { flex: 1; padding: 1rem 0.75rem; overflow-y: auto; }
-    .sidebar-item { display: flex; align-items: center; padding: 0.75rem 1rem; color: var(--text-secondary); text-decoration: none; transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1); gap: 0.75rem; margin-bottom: 0.25rem; border-radius: 12px; position: relative; }
-    .sidebar-item:hover { background: var(--bg-tertiary); color: var(--text-primary); transform: translateX(4px); }
-    .sidebar-item.active { background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(99, 102, 241, 0.1) 100%); color: var(--primary-500); }
-    .sidebar-item.active::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 3px; height: 24px; background: linear-gradient(180deg, #3b82f6 0%, #6366f1 100%); border-radius: 0 4px 4px 0; }
-    .sidebar-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .sidebar-icon svg { width: 20px; height: 20px; }
-    .sidebar-label { white-space: nowrap; font-size: 0.9375rem; font-weight: 500; }
-    .sidebar.collapsed .sidebar-label { display: none; }
-    .topbar { height: 64px; background: var(--glass-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border-light); display: flex; align-items: center; justify-content: space-between; padding: 0 1.5rem; position: fixed; top: 0; right: 0; left: 260px; z-index: 40; transition: left 400ms cubic-bezier(0.4, 0, 0.2, 1); }
-    .topbar.sidebar-collapsed { left: 72px; }
-    .topbar-left { display: flex; align-items: center; gap: 1rem; }
-    .topbar-toggle { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; background: transparent; border: none; cursor: pointer; color: var(--text-secondary); transition: all 150ms ease; }
-    .topbar-toggle:hover { background: var(--bg-tertiary); color: var(--text-primary); }
-    .topbar-search { position: relative; display: flex; align-items: center; }
-    .topbar-search svg { position: absolute; left: 14px; color: var(--text-tertiary); }
-    .topbar-search input { width: 320px; padding: 0.5rem 1rem 0.5rem 2.75rem; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-tertiary); font-size: 0.875rem; color: var(--text-primary); transition: all 150ms ease; }
-    .topbar-search input:focus { outline: none; border-color: var(--primary-500); background: var(--bg-secondary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
-    .topbar-search input::placeholder { color: var(--text-tertiary); }
-    .topbar-right { display: flex; align-items: center; gap: 0.5rem; }
-    .topbar-icon-btn { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; background: transparent; border: none; cursor: pointer; color: var(--text-secondary); transition: all 150ms ease; position: relative; }
-    .topbar-icon-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); transform: scale(1.05); }
-    .notification-badge { position: absolute; top: 6px; right: 6px; min-width: 16px; height: 16px; background: #ef4444; color: white; font-size: 0.625rem; font-weight: 600; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-    .user-menu { display: flex; align-items: center; gap: 0.75rem; padding: 0.375rem 0.75rem; border-radius: 12px; cursor: pointer; position: relative; transition: all 150ms ease; margin-left: 0.5rem; }
-    .user-menu:hover { background: var(--bg-tertiary); }
-    .user-avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.875rem; box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3); }
-    .user-name { font-weight: 500; font-size: 0.875rem; color: var(--text-primary); }
-    .user-menu svg { color: var(--text-tertiary); transition: transform 150ms ease; }
-    .user-menu:hover svg { transform: translateY(2px); }
-    .dropdown-menu { position: absolute; top: 100%; right: 0; margin-top: 0.5rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); min-width: 200px; padding: 0.5rem; z-index: 100; animation: fadeIn 0.15s ease-out; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
-    .dropdown-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0.875rem; color: var(--text-primary); font-size: 0.875rem; border-radius: 10px; cursor: pointer; transition: all 150ms ease; }
-    .dropdown-item:hover { background: var(--bg-tertiary); }
-    .dropdown-item svg { color: var(--text-tertiary); }
-    .dropdown-item.text-danger { color: #ef4444; }
-    .dropdown-item.text-danger svg { color: #ef4444; }
-    .dropdown-divider { height: 1px; background: var(--border-color); margin: 0.5rem 0; }
-    .main-content { margin-left: 260px; margin-top: 64px; padding: 1.5rem; min-height: calc(100vh - 64px); transition: margin-left 400ms cubic-bezier(0.4, 0, 0.2, 1); }
-    .main-content.sidebar-collapsed { margin-left: 72px; }
-    @media (max-width: 1024px) { .sidebar { transform: translateX(-100%); } .sidebar.mobile-open { transform: translateX(0); } .topbar { left: 0; } .main-content { margin-left: 0; } .topbar-search { display: none; } .user-name { display: none; } }
+    :host { display: block; }
+    .shell { min-height: 100vh; }
+
+    /* Sidebar */
+    .sidebar {
+      position: fixed; inset: 0 auto 0 0; width: var(--sidebar-w); z-index: 60;
+      background: var(--sidebar-bg); color: var(--sidebar-text); display: flex; flex-direction: column;
+      border-right: 1px solid var(--sidebar-border); transition: width 0.22s var(--ease), transform 0.22s var(--ease);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; height: var(--topbar-h); padding: 0 20px; text-decoration: none !important; border-bottom: 1px solid var(--sidebar-border); flex-shrink: 0; }
+    .brand-mark { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--brand); color: #fff; font-size: 16px; flex-shrink: 0; box-shadow: 0 4px 14px rgba(234, 88, 12, 0.35); }
+    .brand-text { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+    .brand-text strong { color: var(--sidebar-text-strong); font-size: 16px; letter-spacing: -0.01em; }
+    .brand-text small { color: var(--brand); font-weight: 800; font-size: 11px; letter-spacing: 0.12em; }
+
+    .nav { flex: 1; overflow-y: auto; padding: 12px 12px 20px; }
+    .nav-section + .nav-section { margin-top: 18px; }
+    .nav-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #5b667a; padding: 0 12px 8px; white-space: nowrap; }
+    .nav-item {
+      display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; margin-bottom: 2px; border-radius: 9px;
+      color: var(--sidebar-text); font-size: 13.5px; font-weight: 500; text-decoration: none !important; position: relative; white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+    }
+    .nav-item i { width: 18px; text-align: center; font-size: 14.5px; flex-shrink: 0; }
+    .nav-item:hover { background: var(--sidebar-hover); color: var(--sidebar-text-strong); }
+    .nav-item.active { background: var(--sidebar-active); color: #fff; }
+    .nav-item.active i { color: var(--brand); }
+    .nav-item.active::before { content: ''; position: absolute; left: -12px; top: 9px; bottom: 9px; width: 3px; border-radius: 0 3px 3px 0; background: var(--brand); }
+    .nav-badge { margin-left: auto; background: var(--brand); color: #fff; font-size: 11px; font-weight: 700; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 99px; display: grid; place-items: center; }
+
+    .sidebar-foot { display: flex; align-items: center; gap: 6px; padding: 12px; border-top: 1px solid var(--sidebar-border); }
+    .me { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 9px; text-decoration: none !important; }
+    .me:hover { background: var(--sidebar-hover); }
+    .me-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+    .me-text strong { color: var(--sidebar-text-strong); font-size: 13px; }
+    .me-text small { color: var(--sidebar-text); font-size: 11.5px; }
+    .collapse-btn { width: 32px; height: 32px; border-radius: 8px; border: 0; background: transparent; color: var(--sidebar-text); cursor: pointer; flex-shrink: 0; }
+    .collapse-btn:hover { background: var(--sidebar-hover); color: #fff; }
+
+    .collapsed .sidebar { width: var(--sidebar-w-collapsed); }
+    .collapsed .brand { padding: 0; justify-content: center; }
+    .collapsed .brand-text, .collapsed .nav-label, .collapsed .me-text, .collapsed .nav-badge { display: none; }
+    .collapsed .nav-title { text-align: center; padding: 0 0 8px; font-size: 0; }
+    .collapsed .nav-title::after { content: '•••'; font-size: 9px; letter-spacing: 1px; }
+    .collapsed .nav-item { justify-content: center; padding: 0; }
+    .collapsed .sidebar-foot { flex-direction: column; }
+    .collapsed .me { justify-content: center; padding: 6px 0; }
+
+    /* Topbar */
+    .topbar {
+      position: fixed; top: 0; right: 0; left: var(--sidebar-w); height: var(--topbar-h); z-index: 50;
+      display: flex; align-items: center; gap: 16px; padding: 0 24px;
+      background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: saturate(1.4) blur(10px);
+      border-bottom: 1px solid var(--border); transition: left 0.22s var(--ease);
+    }
+    .collapsed .topbar { left: var(--sidebar-w-collapsed); }
+    .global-search { position: relative; flex: 1; max-width: 440px; }
+    .global-search i { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--text-3); font-size: 13px; }
+    .global-search input {
+      width: 100%; height: 38px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2);
+      padding: 0 60px 0 36px; font: inherit; font-size: 13.5px; color: var(--text); transition: all 0.15s;
+    }
+    .global-search input:focus { outline: none; border-color: var(--brand); background: var(--surface); box-shadow: var(--focus-ring); }
+    .global-search kbd { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font: 600 10.5px var(--font); color: var(--text-3); background: var(--surface); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 2px 6px; }
+    .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+    .new-sale { margin-right: 6px; }
+
+    .menu-anchor { position: relative; }
+    .bell { position: relative; }
+    .bell .dot { position: absolute; top: 3px; right: 2px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 99px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; display: grid; place-items: center; border: 2px solid var(--surface); }
+    .user-btn { display: flex; align-items: center; gap: 8px; padding: 3px 8px 3px 3px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; margin-left: 4px; }
+    .user-btn:hover { border-color: var(--border-strong); }
+
+    .dropdown {
+      position: absolute; right: 0; top: calc(100% + 8px); width: 250px; z-index: 70; padding: 6px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-md); animation: drop 0.14s var(--ease);
+    }
+    @keyframes drop { from { opacity: 0; transform: translateY(-4px); } }
+    .dropdown-user { display: flex; align-items: center; gap: 10px; padding: 8px 8px 12px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+    .dropdown-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border-radius: 8px; border: 0; background: transparent; color: var(--text); font-size: 13.5px; text-align: left; cursor: pointer; text-decoration: none !important; }
+    .dropdown-item i { width: 16px; text-align: center; color: var(--text-3); }
+    .dropdown-item:hover { background: var(--surface-3); }
+    .dropdown-item.danger, .dropdown-item.danger i { color: var(--danger-text); }
+    .dropdown-sep { height: 1px; background: var(--border); margin: 6px 0; }
+    .dropdown-alerts { width: 330px; padding: 0; }
+    .dropdown-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+    .alert-list { max-height: 320px; overflow-y: auto; padding: 6px; }
+    .alert-row { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; color: var(--text); text-decoration: none !important; }
+    .alert-row:hover { background: var(--surface-3); }
+    .alert-ico { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--warning-soft); color: var(--warning-text); font-size: 12px; flex-shrink: 0; }
+    .alert-ico.out { background: var(--danger-soft); color: var(--danger-text); }
+    .dropdown-foot { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 11px; border-top: 1px solid var(--border); font-weight: 600; font-size: 13px; color: var(--brand-text); text-decoration: none !important; border-radius: 0 0 12px 12px; }
+    .dropdown-foot:hover { background: var(--brand-soft); }
+
+    .main { margin-left: var(--sidebar-w); padding-top: var(--topbar-h); min-height: 100vh; transition: margin-left 0.22s var(--ease); }
+    .collapsed .main { margin-left: var(--sidebar-w-collapsed); }
+    .role-warning { margin: 16px 32px 0; padding: 10px 14px; border-radius: 10px; background: var(--info-soft); color: var(--info-text); font-size: 13px; display: flex; gap: 10px; align-items: center; }
+
+    .scrim { display: none; }
+    .show-mobile { display: none; }
+
+    @media (max-width: 1024px) {
+      .sidebar { transform: translateX(-100%); width: var(--sidebar-w) !important; box-shadow: var(--shadow-lg); }
+      .mobile-open .sidebar { transform: none; }
+      .mobile-open .scrim { display: block; position: fixed; inset: 0; background: rgba(8, 12, 20, 0.5); z-index: 55; }
+      .collapsed .brand-text, .collapsed .nav-label, .collapsed .me-text { display: initial; }
+      .topbar, .collapsed .topbar { left: 0; padding: 0 16px; gap: 10px; }
+      .main, .collapsed .main { margin-left: 0; }
+      .show-mobile { display: inline-grid; }
+      .hide-mobile { display: none; }
+      .role-warning { margin: 12px 16px 0; }
+    }
+    @media (max-width: 640px) {
+      .global-search kbd { display: none; }
+      .global-search input { padding-right: 12px; }
+      .new-sale span { display: none; }
+      .new-sale { width: 34px; padding: 0; margin-right: 0; }
+      .dropdown-alerts { position: fixed; left: 12px; right: 12px; top: 60px; width: auto; }
+    }
   `]
 })
-export class LayoutComponent {
-  sidebarCollapsed = signal(false);
-  darkMode = signal(false);
-  userMenuOpen = signal(false);
-  userName = signal('');
-  notificationCount = signal(3);
+export class LayoutComponent implements OnInit {
+  auth = inject(AuthService);
+  theme = inject(ThemeService);
+  private api = inject(ApiService);
+  private router = inject(Router);
+  private destroyRef = inject(DestroyRef);
+  private searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
-  constructor(private authService: AuthService, private router: Router) {
-    const user = this.authService.getUser();
-    if (user) { this.userName.set(user.name); }
+  collapsed = signal(this.readCollapsed());
+  mobileOpen = signal(false);
+  openMenu = signal<'user' | 'alerts' | null>(null);
+  alerts = signal<Product[]>([]);
+
+  alertCount = computed(() => this.alerts().length);
+  userName = computed(() => this.auth.currentUser()?.name ?? 'Utilisateur');
+  userInitials = computed(() => initials(this.auth.currentUser()?.name));
+
+  sections = computed(() => {
+    const role = this.auth.role();
+    return NAV
+      .map(section => ({ ...section, items: section.items.filter(i => !i.roles || (role && i.roles.includes(role))) }))
+      .filter(section => section.items.length > 0);
+  });
+
+  ngOnInit(): void {
+    // Refresh stock alerts on load, every 2 minutes and after each navigation
+    const navigations = this.router.events.pipe(filter(e => e instanceof NavigationEnd));
+    interval(120_000).pipe(startWith(0), takeUntilDestroyed(this.destroyRef)).subscribe(() => this.loadAlerts());
+    navigations.pipe(
+      switchMap(() => this.api.getAlerts().pipe(catchError(() => of(null)))),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(data => data && this.alerts.set([...data.out_of_stock, ...data.low_stock]));
   }
 
-  isMobile(): boolean { return window.innerWidth <= 1024; }
-  toggleSidebar(): void { this.sidebarCollapsed.update(v => !v); }
-  toggleDarkMode(): void { this.darkMode.update(v => !v); document.body.classList.toggle('dark', this.darkMode()); }
-  toggleUserMenu(): void { this.userMenuOpen.update(v => !v); }
-  getUserInitials(): string { const user = this.authService.getUser(); if (user) { return user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2); } return 'U'; }
-  logout(): void { this.authService.logout(); this.router.navigate(['/login']); }
+  private loadAlerts(): void {
+    this.api.getAlerts().subscribe({
+      next: data => this.alerts.set([...data.out_of_stock, ...data.low_stock]),
+      error: () => undefined,
+    });
+  }
+
+  toggleCollapse(): void {
+    this.collapsed.update(v => !v);
+    try {
+      localStorage.setItem(COLLAPSE_KEY, this.collapsed() ? '1' : '0');
+    } catch {
+      // ignore
+    }
+  }
+
+  toggleMenu(menu: 'user' | 'alerts', event: Event): void {
+    event.stopPropagation();
+    this.openMenu.update(current => (current === menu ? null : menu));
+  }
+
+  search(event: Event): void {
+    event.preventDefault();
+    const input = this.searchInput()?.nativeElement;
+    const q = input?.value.trim();
+    if (q) {
+      this.router.navigate(['/products'], { queryParams: { search: q } });
+      input!.value = '';
+      input!.blur();
+    }
+  }
+
+  logout(): void {
+    this.openMenu.set(null);
+    this.auth.logout();
+  }
+
+  @HostListener('document:click')
+  closeMenus(): void {
+    this.openMenu.set(null);
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  onKeydown(event: KeyboardEvent): void {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      this.searchInput()?.nativeElement.focus();
+    }
+    if (event.key === 'Escape') {
+      this.openMenu.set(null);
+      this.mobileOpen.set(false);
+    }
+  }
+
+  private readCollapsed(): boolean {
+    try {
+      return localStorage.getItem(COLLAPSE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
 }

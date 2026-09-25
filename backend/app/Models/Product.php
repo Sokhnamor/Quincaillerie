@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,6 +15,7 @@ class Product extends Model
     protected $fillable = [
         'name',
         'reference',
+        'unit',
         'category_id',
         'supplier_id',
         'purchase_price',
@@ -29,6 +31,8 @@ class Product extends Model
         'stock' => 'integer',
         'alert_threshold' => 'integer'
     ];
+
+    protected $appends = ['stock_status'];
 
     public function category(): BelongsTo
     {
@@ -48,6 +52,21 @@ class Product extends Model
     public function purchaseItems(): HasMany
     {
         return $this->hasMany(PurchaseItem::class);
+    }
+
+    public function stockMovements(): HasMany
+    {
+        return $this->hasMany(StockMovement::class);
+    }
+
+    public function scopeLowStock(Builder $query): Builder
+    {
+        return $query->whereColumn('stock', '<=', 'alert_threshold')->where('stock', '>', 0);
+    }
+
+    public function scopeOutOfStock(Builder $query): Builder
+    {
+        return $query->where('stock', '<=', 0);
     }
 
     public function getStockStatusAttribute(): string
