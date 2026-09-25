@@ -7,6 +7,8 @@ import { ThemeService } from '../../../core/services/theme.service';
 import { ApiService } from '../../../core/services/api.service';
 import { Product, RoleName } from '../../../core/models';
 import { initials } from '../../labels';
+import { AssistantPanelComponent } from '../assistant-panel.component';
+import { AssistantService } from '../../../core/services/assistant.service';
 
 interface NavItem {
   label: string;
@@ -64,7 +66,7 @@ const COLLAPSE_KEY = 'sidebar-collapsed';
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, AssistantPanelComponent],
   template: `
     <div class="shell" [class.collapsed]="collapsed()" [class.mobile-open]="mobileOpen()">
       <!-- Sidebar -->
@@ -125,6 +127,10 @@ const COLLAPSE_KEY = 'sidebar-collapsed';
           <a routerLink="/pos" class="btn btn-primary btn-sm new-sale">
             <i class="fa-solid fa-plus"></i><span>Nouvelle vente</span>
           </a>
+
+          <button type="button" class="ai-btn" (click)="assistant.open.set(true)" title="Assistant (Ctrl + J)" aria-label="Ouvrir l'assistant">
+            <i class="fa-solid fa-wand-magic-sparkles"></i><span>Assistant</span>
+          </button>
 
           <button type="button" class="icon-btn" (click)="theme.toggle()" [attr.aria-label]="theme.dark() ? 'Passer en mode clair' : 'Passer en mode sombre'" [attr.title]="theme.dark() ? 'Mode clair' : 'Mode sombre'">
             <i class="fa-solid" [class.fa-moon]="!theme.dark()" [class.fa-sun]="theme.dark()"></i>
@@ -206,6 +212,8 @@ const COLLAPSE_KEY = 'sidebar-collapsed';
         }
         <router-outlet></router-outlet>
       </main>
+
+      <app-assistant-panel></app-assistant-panel>
     </div>
   `,
   styles: [`
@@ -275,6 +283,11 @@ const COLLAPSE_KEY = 'sidebar-collapsed';
     .global-search kbd { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font: 600 10.5px var(--font); color: var(--text-3); background: var(--surface); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 2px 6px; }
     .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
     .new-sale { margin-right: 6px; }
+    .ai-btn {
+      display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border-radius: 99px; cursor: pointer;
+      border: 1px solid var(--brand); background: var(--brand-soft); color: var(--brand-text); font: 600 13px var(--font); transition: all 0.15s;
+    }
+    .ai-btn:hover { background: var(--brand); color: #fff; }
 
     .menu-anchor { position: relative; }
     .bell { position: relative; }
@@ -325,6 +338,8 @@ const COLLAPSE_KEY = 'sidebar-collapsed';
       .global-search kbd { display: none; }
       .global-search input { padding-right: 12px; }
       .new-sale span { display: none; }
+      .ai-btn span { display: none; }
+      .ai-btn { width: 34px; padding: 0; justify-content: center; }
       .new-sale { width: 34px; padding: 0; margin-right: 0; }
       .dropdown-alerts { position: fixed; left: 12px; right: 12px; top: 60px; width: auto; }
     }
@@ -333,6 +348,7 @@ const COLLAPSE_KEY = 'sidebar-collapsed';
 export class LayoutComponent implements OnInit {
   auth = inject(AuthService);
   theme = inject(ThemeService);
+  assistant = inject(AssistantService);
   private api = inject(ApiService);
   private router = inject(Router);
   private destroyRef = inject(DestroyRef);
@@ -408,6 +424,10 @@ export class LayoutComponent implements OnInit {
 
   @HostListener('document:keydown', ['$event'])
   onKeydown(event: KeyboardEvent): void {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'j') {
+      event.preventDefault();
+      this.assistant.open.update(v => !v);
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
       event.preventDefault();
       this.searchInput()?.nativeElement.focus();

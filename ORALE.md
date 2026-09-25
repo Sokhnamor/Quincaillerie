@@ -171,6 +171,24 @@ Le **stock dormant** liste les produits qui ne se sont pas vendus : de l'argent 
 
 ---
 
+## 9 bis. L'ASSISTANT DE GESTION (1 minute) ⭐ moment fort
+
+> *(Cliquer sur le bouton « ✨ Assistant » en haut)*
+
+« Pour finir, j'ai ajouté un **assistant de gestion**. À l'ouverture, il signale déjà ce qui demande de l'attention : ici, un produit sous le seuil d'alerte.
+
+> *(Cliquer sur « Que dois-je commander ? »)*
+
+Je lui demande quoi commander : il me donne la liste et les **quantités suggérées** d'après les ventes du dernier mois, avec le coût estimé.
+
+> *(Taper « Qui me doit de l'argent ? », puis cliquer sur « Relance … »)*
+
+Il liste les clients qui ont une dette, et il me **rédige le message de relance**, prêt à être envoyé sur WhatsApp.
+
+Techniquement, c'est un **moteur de règles** qui comprend les questions courantes en français et répond avec les vraies données du magasin. Il fonctionne **hors ligne et gratuitement**. L'architecture est prête pour une vraie IA : en ajoutant une clé API Claude dans la configuration, les mêmes outils de données sont confiés au modèle, sans rien réécrire, et avec les mêmes droits d'accès. »
+
+---
+
 ## 10. ADMINISTRATION ET DÉMONSTRATION DES DROITS (45 secondes)
 
 > *(Cliquer sur « Paramètres »)*
@@ -195,7 +213,9 @@ Maintenant je me connecte en **caissier** : le menu est plus court, il n'y a plu
 - **contrôler la caisse** chaque soir ;
 - **piloter** l'activité avec des rapports.
 
-Côté qualité, le projet a **45 tests automatisés** : 20 sur l'API et 25 sur l'interface. Ils vérifient par exemple qu'une vente est entièrement annulée si un produit manque en stock.
+Et un **assistant de gestion** répond aux questions sur le magasin.
+
+Côté qualité, le projet a **56 tests automatisés** : 29 sur l'API et 27 sur l'interface. Ils vérifient par exemple qu'une vente est entièrement annulée si un produit manque en stock.
 
 Merci pour votre attention. Avez-vous des questions ? »
 
@@ -212,13 +232,15 @@ Merci pour votre attention. Avez-vous des questions ? »
 | **Que se passe-t-il si le client rapporte un article ?** | On crée un **avoir** : l'article revient en stock, la dette baisse, et si le client avait trop payé, un remboursement est enregistré. La facture d'origine n'est jamais modifiée. |
 | **Et si le serveur tombe en panne ?** | Sauvegarde automatique de la base chaque soir, 30 jours conservés, téléchargeable depuis les paramètres et restaurable via phpMyAdmin. |
 | **Comment avez-vous testé ?** | Tests fonctionnels PHPUnit sur une base SQLite en mémoire (ventes, stock, crédit, retours, devis, caisse, droits) et tests unitaires Angular (calculs du point de vente, session expirée…). |
+| **Votre assistant, c'est de l'intelligence artificielle ?** | Aujourd'hui, c'est un moteur de règles : il reconnaît les questions par mots-clés et exécute les bonnes requêtes. C'est gratuit, rapide et fiable. Il est conçu pour brancher Claude (IA d'Anthropic) avec une simple clé API : l'IA appellerait alors les mêmes outils en lecture seule, avec les mêmes droits. Je l'ai testé avec un serveur simulé. |
+| **L'IA pourrait-elle modifier les données ?** | Non. Elle n'a accès qu'à des outils en lecture seule, et c'est le serveur Laravel qui les exécute en vérifiant le rôle de l'utilisateur. Elle ne voit jamais directement la base de données. |
 | **Quelles améliorations futures ?** | Étiquettes code-barres, photos des produits, application mobile pour les livreurs, synchronisation hors ligne. |
 
 ---
 
 ## ⏱️ VERSION COURTE (6 minutes)
 
-Si le temps est limité, gardez uniquement : **1** Introduction → **3** Tableau de bord → **4** Point de vente → **5** Retour (sans les paiements) → **8** Clôture de caisse → **11** Conclusion.
+Si le temps est limité, gardez uniquement : **1** Introduction → **3** Tableau de bord → **4** Point de vente → **5** Retour (sans les paiements) → **8** Clôture de caisse → **9 bis** Assistant → **11** Conclusion.
 
 ---
 

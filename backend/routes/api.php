@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AssistantController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController;
 use App\Http\Controllers\Api\CashClosingController;
@@ -78,6 +79,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/quotes/{quote}', [QuoteController::class, 'destroy']);
     Route::post('/quotes/{quote}/convert', [QuoteController::class, 'convert']);
     Route::get('/quotes/{quote}/pdf', [QuoteController::class, 'pdf']);
+
+    // Management assistant (rules engine, or Claude when configured)
+    Route::get('/assistant/welcome', [AssistantController::class, 'welcome']);
+    Route::post('/assistant', [AssistantController::class, 'ask'])->middleware('throttle:' . config('assistant.rate_limit', 20) . ',1');
 
     // Cash register closing
     Route::get('/cash-closings/summary', [CashClosingController::class, 'summary']);

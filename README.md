@@ -18,6 +18,7 @@ Application web de gestion de quincaillerie : point de vente, stock, factures, p
 - **Clients** : particuliers / professionnels (prix de gros), plafond de crédit, suivi des dettes, relance WhatsApp.
 - **Clôture de caisse** : encaissements du jour par moyen de paiement, comptage des billets, écart constaté, historique.
 - **Rapports** : CA net, marge, panier moyen, ventes par jour / catégorie / vendeur / moyen de paiement, top produits, stock dormant, export Excel.
+- **Assistant de gestion** (bouton ✨ ou Ctrl + J) : questions en français sur le stock, les ventes, les dettes, la caisse et l'utilisation de l'application, réponses tirées des vraies données, relances WhatsApp prêtes à envoyer.
 - **Stock** : alertes de seuil, ajustements motivés (inventaire, casse…), journal complet des mouvements, historique par produit.
 - **Approvisionnements** : réception fournisseur qui met à jour stock et prix d'achat, ajout automatique des produits en alerte.
 - **Tableau de bord** : CA du jour / du mois, encaissements, créances, marge, graphiques 12 mois / 30 jours, top produits.
@@ -69,11 +70,30 @@ L'URL de l'API se règle dans `frontend/src/environments/environment.ts`.
 
 Ils apparaissent en accès rapide sur la page de connexion en développement (`environment.ts`). Le build de production (`environment.prod.ts`) ne les contient pas. **Avant une vraie mise en service, suivez [DEPLOIEMENT.md](DEPLOIEMENT.md).**
 
+## Assistant de gestion
+
+Par défaut, l'assistant fonctionne **hors ligne** avec un moteur de règles (gratuit, sans internet) : il reconnaît les questions courantes
+(« Que dois-je commander ? », « Ventes d'hier », « Qui me doit de l'argent ? », « Stock du ciment », « Comment faire un retour ? »…).
+
+Il peut devenir une **vraie IA (Claude, d'Anthropic)** sans modifier le code. Dans `backend/.env` :
+
+```env
+ASSISTANT_DRIVER=claude
+ANTHROPIC_API_KEY=sk-ant-...      # clé créée sur console.anthropic.com (usage payant)
+ASSISTANT_MODEL=claude-opus-5
+ASSISTANT_RATE_LIMIT=20           # questions par utilisateur et par minute
+```
+
+Puis `php artisan config:clear`. Claude n'accède jamais directement à la base : il appelle des outils en lecture seule
+(`app/Services/Assistant/AssistantTools.php`) qui appliquent les mêmes droits que l'application (un caissier ne voit ni marges ni prix d'achat).
+En cas de panne ou de coupure internet, l'assistant repasse automatiquement en mode hors ligne.
+Les données nécessaires à la réponse (produits, chiffres, noms de clients) sont alors envoyées à Anthropic.
+
 ## Tests
 
 ```bash
-cd backend && php artisan test        # 20 tests fonctionnels de l'API
-cd frontend && npm run test:ci        # 25 tests unitaires Angular (Chrome headless)
+cd backend && php artisan test        # 29 tests fonctionnels de l'API
+cd frontend && npm run test:ci        # 27 tests unitaires Angular (Chrome headless)
 ```
 
 Backend : protection de l'API, TVA et stock, annulation complète si stock insuffisant, numérotation des factures, paiements partiels, plafond de crédit, retours et avoirs, devis et conversion, clôture de caisse, rapports, droits par rôle, factures PDF dans les 3 formats.
@@ -88,6 +108,7 @@ backend/
   app/Services/StockService   point d'entrée unique de tout mouvement de stock
   app/Services/SaleService    création, retours et annulation des ventes (règles de crédit)
   app/Services/BackupService  sauvegarde SQL de la base (commande `php artisan app:backup`)
+  app/Services/Assistant/     assistant : outils de données, moteur de règles, pilote Claude
   app/Models/                 Eloquent (Sale, SalePayment, StockMovement, Setting…)
   resources/views/invoices/   ticket 80 mm, facture A4/A5, devis, avoir
 frontend/src/app/
