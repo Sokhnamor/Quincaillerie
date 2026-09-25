@@ -1,4 +1,6 @@
 @php
+    $logoFile = resource_path('images/logo-icon-mono.png');
+    $logo = is_file($logoFile) ? 'data:image/png;base64,' . base64_encode(file_get_contents($logoFile)) : null;
     $currency = $settings['currency'];
     $money = fn ($v) => number_format((float) $v, 0, ',', ' ');
     $methodLabels = ['cash' => 'Espèces', 'wave' => 'Wave', 'orange_money' => 'Orange Money', 'card' => 'Carte', 'transfer' => 'Virement', 'cheque' => 'Chèque'];
@@ -36,6 +38,7 @@
 </head>
 <body>
     <div class="center">
+        @if($logo)<img src="{{ $logo }}" alt="" style="width: 38px; height: 38px; margin-bottom: 3px;">@endif
         <div class="shop">{{ mb_strtoupper($settings['company_name']) }}</div>
         <div class="shop-info">{{ $settings['company_address'] }} · Tél. {{ $settings['company_phone'] }}</div>
     </div>

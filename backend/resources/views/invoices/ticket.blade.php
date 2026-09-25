@@ -1,4 +1,6 @@
 @php
+    $logoFile = resource_path('images/logo-icon-mono.png');
+    $logo = is_file($logoFile) ? 'data:image/png;base64,' . base64_encode(file_get_contents($logoFile)) : null;
     $currency = $settings['currency'];
     $money = fn ($v) => number_format((float) $v, 0, ',', ' ');
     $statusLabels = ['paid' => 'PAYÉE', 'partial' => 'PAIEMENT PARTIEL', 'unpaid' => 'IMPAYÉE'];
@@ -41,7 +43,11 @@
 <body>
     {{-- En-tête boutique --}}
     <div class="center">
-        <div class="logo">{{ mb_strtoupper(mb_substr($settings['company_name'], 0, 1)) }}</div>
+        @if($logo)
+            <img src="{{ $logo }}" alt="" style="width: 42px; height: 42px; margin-bottom: 3px;">
+        @else
+            <div class="logo">{{ mb_strtoupper(mb_substr($settings['company_name'], 0, 1)) }}</div>
+        @endif
         <div class="shop">{{ mb_strtoupper($settings['company_name']) }}</div>
         <div class="shop-info">{{ $settings['company_address'] }}</div>
         <div class="shop-info">Tél. {{ $settings['company_phone'] }}</div>

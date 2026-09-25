@@ -210,7 +210,7 @@ class SaleController extends Controller
         $pdf = Pdf::loadView('invoices.credit-note', ['return' => $saleReturn, 'settings' => $settings]);
 
         if ($settings['invoice_format'] === 'ticket') {
-            $height = 120 / 25.4 * 72 + $saleReturn->items->count() * 26;
+            $height = 135 / 25.4 * 72 + $saleReturn->items->count() * 26;
             $pdf->setPaper([0, 0, 80 / 25.4 * 72, $height]);
         } else {
             $pdf->setPaper('a5');
@@ -244,7 +244,7 @@ class SaleController extends Controller
         if ($format === 'ticket') {
             // 80 mm wide roll; height grows with the content so the receipt is never cut
             $width = 80 / 25.4 * 72;
-            $height = 150 / 25.4 * 72 + $sale->items->count() * 26 + $sale->payments->count() * 11
+            $height = 165 / 25.4 * 72 + $sale->items->count() * 26 + $sale->payments->count() * 11
                 + ($sale->notes ? 30 : 0) + ($sale->returns->isNotEmpty() ? 30 : 0);
             $pdf = Pdf::loadView('invoices.ticket', compact('sale', 'settings'))->setPaper([0, 0, $width, $height]);
         } else {

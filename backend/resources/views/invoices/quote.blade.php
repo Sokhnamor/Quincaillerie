@@ -1,6 +1,8 @@
 @php
     $compact = ($paper ?? 'a4') === 'a5';
     $px = fn (float $size) => round($compact ? $size * 0.8 : $size, 1) . 'px';
+    $logoFile = resource_path('images/logo-icon.png');
+    $logo = is_file($logoFile) ? 'data:image/png;base64,' . base64_encode(file_get_contents($logoFile)) : null;
     $currency = $settings['currency'];
     $money = fn ($v) => number_format((float) $v, 0, ',', ' ');
     $taxRate = rtrim(rtrim(number_format((float) $quote->tax_rate, 2, ',', ''), '0'), ',');
@@ -51,7 +53,13 @@
 <body>
     <table>
         <tr>
-            <td style="width: {{ $px(56) }};"><div class="logo">{{ mb_strtoupper(mb_substr($settings['company_name'], 0, 1)) }}</div></td>
+            <td style="width: {{ $px(66) }};">
+                @if($logo)
+                    <img src="{{ $logo }}" alt="" style="width: {{ $px(54) }}; height: {{ $px(54) }};">
+                @else
+                    <div class="logo">{{ mb_strtoupper(mb_substr($settings['company_name'], 0, 1)) }}</div>
+                @endif
+            </td>
             <td>
                 <div class="company">{{ $settings['company_name'] }}</div>
                 <div class="company-info">
